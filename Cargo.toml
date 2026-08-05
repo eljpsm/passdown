@@ -1,0 +1,25 @@
+[package]
+name = "passdown"
+version = "0.1.0"
+edition = "2024"
+# Floor set by let-chains, stabilized in 1.88.
+rust-version = "1.88"
+license = "GPL-3.0-or-later"
+autolib = false
+publish = false
+description = "A really, really simple Markdown formatter with as few knobs as possible."
+repository = "https://github.com/eljpsm/passdown"
+
+[dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.5", features = ["derive"] }
+comrak = { version = "=0.54.0", default-features = false }
+ignore = "0.4.33"
+rayon = "1.12.0"
+serde = { version = "1.0.229", features = ["derive"] }
+tempfile = "3.27.0"
+toml = "1.1.4"
+unicode-width = "0.2.2"
+
+[target.'cfg(windows)'.dependencies]
+winapi-util = "0.1.11"

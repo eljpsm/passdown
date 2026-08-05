@@ -1,0 +1,2 @@
+# Fixture inputs are deliberately misformatted test data; never touch them.
+ignore = ["tests/fixtures/"]
