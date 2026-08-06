@@ -40,9 +40,12 @@ upward from the current directory:
 # Files or directories to skip, in gitignore glob syntax.
 ignore = ["vendor/", "CHANGELOG.md"]
 
-# Whether .gitignore entries are added to the ignore list. Default: true.
+# Whether .gitignore and .git/info/exclude entries are used. Default: true.
 use_gitignore = true
 ```
+
+Global Git ignore files and other VCS ignore formats are not read. Directory
+walks always skip `.git`, `.hg`, `.svn`, and `.jj` metadata directories.
 
 ## Disabling formatting
 
