@@ -11,15 +11,26 @@ description = "A really, really simple Markdown formatter with as few knobs as p
 repository = "https://github.com/eljpsm/passdown"
 
 [dependencies]
-anyhow = "1.0.104"
-clap = { version = "4.6.5", features = ["derive"] }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+# Exact pin: the output is part of the contract and comrak releases change
+# rendering.
 comrak = { version = "=0.54.0", default-features = false }
-ignore = "0.4.33"
-rayon = "1.12.0"
-serde = { version = "1.0.229", features = ["derive"] }
-tempfile = "3.27.0"
-toml = "1.1.4"
-unicode-width = "0.2.2"
+ignore = "0.4"
+rayon = "1"
+serde = { version = "1", features = ["derive"] }
+tempfile = "3"
+toml = "1"
+unicode-width = "0.2"
 
 [target.'cfg(windows)'.dependencies]
-winapi-util = "0.1.11"
+winapi-util = "0.1"
+
+[profile.release]
+strip = true
+lto = true
+
+# Make plain `cargo clippy` and rust-analyzer as strict as CI. Clippy lints
+# do not run under `cargo build`, so toolchain bumps cannot break `nix build`.
+[lints.clippy]
+all = "deny"

@@ -2,12 +2,9 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
+/// A really, really simple Markdown formatter with as few knobs as possible.
 #[derive(Debug, Parser)]
-#[command(
-    name = "passdown",
-    version,
-    about = "A really, really simple Markdown formatter with as few knobs as possible."
-)]
+#[command(name = "passdown", version)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
