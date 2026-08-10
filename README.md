@@ -18,7 +18,8 @@ make install
 ## Usage
 
 ```bash
-# Format the directories in place.
+# Format the directories in place. Prints "fixed: <path>" for each
+# file it rewrites.
 passdown fix
 passdown fix docs README.md
 # Check the directories for issues, exit 1 on issues.

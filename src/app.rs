@@ -221,7 +221,7 @@ fn render_discovery_error(error: &DiscoveryError) -> String {
 
 /// Format one file and buffer its report. `check` prints what would change
 /// (Note diagnostics included); `fix` rewrites the target atomically and
-/// stays silent on success. Error diagnostics are reported in both modes.
+/// reports each rewritten file. Error diagnostics are reported in both modes.
 fn process_file(mode: Mode, file: &DiscoveredFile) -> FileOutcome {
     let mut outcome = FileOutcome {
         display_path: file.display_path.clone(),
@@ -276,7 +276,11 @@ fn process_file(mode: Mode, file: &DiscoveredFile) -> FileOutcome {
             if changed {
                 match crate::file_io::atomic_replace(path, file.identity, result.output.as_bytes())
                 {
-                    Ok(()) => {}
+                    Ok(()) => {
+                        outcome
+                            .stdout
+                            .push(format!("fixed: {}", display_path.display()));
+                    }
                     Err(CommitError::HardLinked(count)) => {
                         outcome.stderr.push(format!(
                             "passdown: refusing to rewrite hard-linked file {}: target has {count} links",

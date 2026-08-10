@@ -59,7 +59,9 @@ fn clean_tree_exits_zero() {
     let tree = TempTree::new("clean");
     tree.write("doc.md", "Already formatted.\n");
     assert_eq!(code(&tree.run(&["check", "."])), 0);
-    assert_eq!(code(&tree.run(&["fix", "."])), 0);
+    let fix = tree.run(&["fix", "."]);
+    assert_eq!(code(&fix), 0);
+    assert_eq!(stdout(&fix), "");
 }
 
 #[test]
@@ -95,7 +97,9 @@ fn check_reports_and_fix_rewrites() {
     assert!(out.contains("would reformat:"), "stdout was: {out}");
     assert!(out.contains("non-ASCII punctuation"), "stdout was: {out}");
 
-    assert_eq!(code(&tree.run(&["fix", "."])), 0);
+    let fix = tree.run(&["fix", "."]);
+    assert_eq!(code(&fix), 0);
+    assert!(stdout(&fix).contains("fixed: ./doc.md"));
     assert_eq!(
         tree.read("doc.md"),
         "Some \"curly\" text with bad breaks.\n"
@@ -212,9 +216,13 @@ fn fix_is_idempotent_on_disk() {
         "doc.md",
         "Title\n=====\n\n* a\n* b\n\n1) one\n2) two\n\n> quoted   text\nlazy line\n",
     );
-    assert_eq!(code(&tree.run(&["fix", "."])), 0);
+    let first_run = tree.run(&["fix", "."]);
+    assert_eq!(code(&first_run), 0);
+    assert!(stdout(&first_run).contains("fixed: ./doc.md"));
     let first = tree.read("doc.md");
-    assert_eq!(code(&tree.run(&["fix", "."])), 0);
+    let second_run = tree.run(&["fix", "."]);
+    assert_eq!(code(&second_run), 0);
+    assert_eq!(stdout(&second_run), "");
     assert_eq!(tree.read("doc.md"), first);
     let path = Path::new("doc.md");
     assert!(path.is_relative());
@@ -264,6 +272,8 @@ fn hard_link_is_refused_without_stopping_other_files() {
 
     assert_eq!(code(&fix), 2);
     assert!(stderr(&fix).contains("refusing to rewrite hard-linked file linked.md"));
+    assert!(!stdout(&fix).contains("fixed: linked.md"));
+    assert!(stdout(&fix).contains("fixed: ordinary.md"));
     assert_eq!(tree.read("linked.md"), "linked   text\n");
     assert_eq!(tree.read("alias.md"), "linked   text\n");
     assert_eq!(tree.read("ordinary.md"), "ordinary text\n");
