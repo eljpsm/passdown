@@ -4,41 +4,38 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+use tempfile::TempDir;
+
 struct TempTree {
-    root: PathBuf,
+    root: TempDir,
 }
 
 impl TempTree {
     fn new(name: &str) -> Self {
-        let root = std::env::temp_dir().join(format!("passdown-cli-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
+        let root = tempfile::Builder::new()
+            .prefix(&format!("passdown-cli-{name}-"))
+            .tempdir()
+            .unwrap();
         TempTree { root }
     }
 
     fn write(&self, rel: &str, contents: &str) -> PathBuf {
-        let path = self.root.join(rel);
+        let path = self.root.path().join(rel);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, contents).unwrap();
         path
     }
 
     fn read(&self, rel: &str) -> String {
-        std::fs::read_to_string(self.root.join(rel)).unwrap()
+        std::fs::read_to_string(self.root.path().join(rel)).unwrap()
     }
 
     fn run(&self, args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_passdown"))
             .args(args)
-            .current_dir(&self.root)
+            .current_dir(self.root.path())
             .output()
             .unwrap()
-    }
-}
-
-impl Drop for TempTree {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.root);
     }
 }
 
@@ -265,7 +262,11 @@ fn hidden_markdown_is_checked_but_vcs_metadata_is_not() {
 fn hard_link_is_refused_without_stopping_other_files() {
     let tree = TempTree::new("hardlink");
     tree.write("linked.md", "linked   text\n");
-    std::fs::hard_link(tree.root.join("linked.md"), tree.root.join("alias.md")).unwrap();
+    std::fs::hard_link(
+        tree.root.path().join("linked.md"),
+        tree.root.path().join("alias.md"),
+    )
+    .unwrap();
     tree.write("ordinary.md", "ordinary   text\n");
 
     let fix = tree.run(&["fix", "linked.md", "ordinary.md"]);
@@ -283,7 +284,11 @@ fn hard_link_is_refused_without_stopping_other_files() {
 fn clean_hard_link_is_a_successful_noop() {
     let tree = TempTree::new("clean-hardlink");
     tree.write("linked.md", "Already formatted.\n");
-    std::fs::hard_link(tree.root.join("linked.md"), tree.root.join("alias.md")).unwrap();
+    std::fs::hard_link(
+        tree.root.path().join("linked.md"),
+        tree.root.path().join("alias.md"),
+    )
+    .unwrap();
 
     let fix = tree.run(&["fix", "linked.md"]);
 
@@ -297,7 +302,7 @@ fn clean_hard_link_is_a_successful_noop() {
 fn fix_follows_and_preserves_a_file_symlink() {
     let tree = TempTree::new("symlink");
     tree.write("target.md", "linked   text\n");
-    let link = tree.root.join("link.md");
+    let link = tree.root.path().join("link.md");
     if let Err(err) = symlink_file(Path::new("target.md"), &link) {
         #[cfg(windows)]
         if err.kind() == std::io::ErrorKind::PermissionDenied {
