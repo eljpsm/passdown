@@ -15,6 +15,9 @@ nix run github:eljpsm/passdown
 make install
 ```
 
+Prebuilt Linux binaries are on the [releases
+page](https://github.com/eljpsm/passdown/releases).
+
 ## Usage
 
 ```bash

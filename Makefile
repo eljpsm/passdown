@@ -1,4 +1,6 @@
-.PHONY: build install test test-format test-cli coverage coverage-html lint fmt bless
+.PHONY: build install test test-format test-cli coverage coverage-html lint fmt bless release
+
+VERSION = $(shell sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)
 
 # Build the release binary.
 build:
@@ -40,3 +42,9 @@ fmt:
 # Review the diff afterwards -- blessing accepts whatever the code produces.
 bless:
 	PASSDOWN_BLESS=1 cargo test
+
+# Tag the current commit with the Cargo.toml version and push the tag.
+# CI then runs goreleaser and publishes the binaries.
+release:
+	git tag "v$(VERSION)"
+	git push origin "v$(VERSION)"
