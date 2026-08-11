@@ -111,12 +111,28 @@ fn untyped_fence_is_unfixable() {
 
     let check = tree.run(&["check", "."]);
     assert_eq!(code(&check), 1);
-    assert!(stderr(&check).contains("code block has no language"));
+    assert!(stderr(&check).contains("code fence has no language"));
 
     let fix = tree.run(&["fix", "."]);
     assert_eq!(code(&fix), 1);
-    assert!(stderr(&fix).contains("code block has no language"));
+    assert!(stderr(&fix).contains("code fence has no language"));
     assert_eq!(tree.read("doc.md"), "~~~~\ncode\n~~~~\n");
+}
+
+#[test]
+fn indented_code_is_unfixable() {
+    let tree = TempTree::new("indented");
+    tree.write("doc.md", "prose first\n\n    indented code\n");
+
+    let check = tree.run(&["check", "."]);
+    assert_eq!(code(&check), 1);
+    assert!(stderr(&check).contains("indented code block"));
+    assert!(stderr(&check).contains("convert to a fenced block"));
+
+    let fix = tree.run(&["fix", "."]);
+    assert_eq!(code(&fix), 1);
+    assert!(stderr(&fix).contains("indented code block"));
+    assert_eq!(tree.read("doc.md"), "prose first\n\n    indented code\n");
 }
 
 #[test]

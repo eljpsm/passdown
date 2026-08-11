@@ -5,8 +5,9 @@ use crate::diagnostics::{DiagKind, Diagnostic};
 use super::state::Serializer;
 
 /// Emit a code block as backtick-fenced with its language tag. A block with
-/// no language is the one unfixable case: report an Error diagnostic and
-/// reproduce the block exactly as written.
+/// no language is unfixable: report an Error diagnostic and reproduce the
+/// block exactly as written. Fences and indented blocks get distinct
+/// diagnostics, since only a fence can have a language added to it.
 pub fn serialize_code_block<'a>(
     s: &mut Serializer<'_>,
     node: &'a AstNode<'a>,
@@ -20,7 +21,11 @@ pub fn serialize_code_block<'a>(
         s.diags.push(Diagnostic {
             line: sourcepos.start.line,
             col: sourcepos.start.column,
-            kind: DiagKind::MissingCodeLanguage,
+            kind: if code.fenced {
+                DiagKind::MissingCodeLanguage
+            } else {
+                DiagKind::IndentedCodeBlock
+            },
         });
         // Indented blocks report an end position that can overshoot into
         // trailing blank lines (end.column == 0); walk back to real content.

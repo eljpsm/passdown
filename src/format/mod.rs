@@ -146,6 +146,30 @@ mod tests {
     }
 
     #[test]
+    fn indented_code_gets_its_own_diagnostic() {
+        use crate::diagnostics::DiagKind;
+        let indented = format_document("    code\n");
+        assert_eq!(indented.output, "    code\n");
+        assert!(matches!(
+            indented.diagnostics[..],
+            [Diagnostic {
+                kind: DiagKind::IndentedCodeBlock,
+                ..
+            }]
+        ));
+
+        let fence = format_document("```\ncode\n```\n");
+        assert_eq!(fence.output, "```\ncode\n```\n");
+        assert!(matches!(
+            fence.diagnostics[..],
+            [Diagnostic {
+                kind: DiagKind::MissingCodeLanguage,
+                ..
+            }]
+        ));
+    }
+
+    #[test]
     fn dollar_amounts_stay_prose() {
         let input = "costs $5 and $10 today\n";
         assert_eq!(format_document(input).output, input);
