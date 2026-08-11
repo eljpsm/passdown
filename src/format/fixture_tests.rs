@@ -100,7 +100,7 @@ fn fixtures() {
 }
 
 fn render_html(input: &str) -> String {
-    let mut options = comrak_options();
+    let mut options = comrak_options(input);
     options.render.r#unsafe = true;
     comrak::markdown_to_html(input, &options)
 }

@@ -42,6 +42,39 @@ pub fn needs_list_separator<'a>(prev: &'a AstNode<'a>, next: &'a AstNode<'a>) ->
     }
 }
 
+/// The literal of a paragraph whose entire content is one display-math
+/// span with its `$$` fences already on their own lines, or `None`. Only
+/// that shape keeps the block form: reflowing content onto its own line
+/// could produce a line that interrupts the paragraph on reparse (`- x`,
+/// `# h`), which would split the math. Lines that already sat between the
+/// fences survived block parsing once, so re-emitting them as-is is safe.
+fn sole_display_math<'a>(node: &'a AstNode<'a>) -> Option<String> {
+    let first = node.first_child()?;
+    if first.next_sibling().is_some() {
+        return None;
+    }
+    match &first.data.borrow().value {
+        NodeValue::Math(math)
+            if math.display_math
+                && math.literal.starts_with('\n')
+                && math.literal.ends_with('\n') =>
+        {
+            Some(math.literal.clone())
+        }
+        _ => None,
+    }
+}
+
+/// Emit display math as a fenced block. Content lines are verbatim and,
+/// like code blocks and tables, exempt from the 80-column cap.
+fn serialize_display_math(s: &mut Serializer<'_>, literal: &str) {
+    s.push_line("$$");
+    for line in literal.trim_matches('\n').lines() {
+        s.push_line(line);
+    }
+    s.push_line("$$");
+}
+
 /// Dispatch one block node to its serializer. Every arm clones or copies
 /// what it needs out of `data` and then drops the borrow. Serializing
 /// children re-borrows `node.data`, so holding it across the call would
@@ -51,6 +84,10 @@ pub fn serialize_block<'a>(s: &mut Serializer<'_>, node: &'a AstNode<'a>) {
     match &data.value {
         NodeValue::Paragraph => {
             drop(data);
+            if let Some(literal) = sole_display_math(node) {
+                serialize_display_math(s, &literal);
+                return;
+            }
             let chunks = collect_chunks(node, &mut s.diags);
             for line in wrap(&chunks, s.width_budget()) {
                 s.push_line(&line);

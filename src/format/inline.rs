@@ -161,6 +161,7 @@ fn walk<'a>(b: &mut ChunkBuilder, node: &'a AstNode<'a>, diags: &mut Vec<Diagnos
             }
             b.close(&format!("]({})", destination(&link.url, &link.title)));
         }
+        NodeValue::Math(math) => b.piece(&math_span(&math.literal, math.display_math)),
         NodeValue::FootnoteReference(footnote) => {
             b.piece(&format!("[^{}]", footnote.name));
         }
@@ -246,6 +247,15 @@ pub fn code_span(literal: &str) -> String {
     }
 }
 
+/// A math span, verbatim inside its dollar delimiters. Math is never
+/// escaped or punctuation-normalized; newlines flatten to spaces so the
+/// span stays one unbreakable chunk.
+pub fn math_span(literal: &str, display: bool) -> String {
+    let literal = literal.replace('\n', " ");
+    let delim = if display { "$$" } else { "$" };
+    format!("{delim}{literal}{delim}")
+}
+
 /// Link/image destination plus optional title, ready to sit inside `(...)`.
 fn destination(url: &str, title: &str) -> String {
     let dest = if url.is_empty() {
@@ -281,6 +291,13 @@ mod tests {
         assert_eq!(code_span(" spaced "), "`  spaced  `");
         assert_eq!(code_span(" "), "` `");
         assert_eq!(code_span("multi\nline"), "`multi line`");
+    }
+
+    #[test]
+    fn math_span_forms() {
+        assert_eq!(math_span("x_i + y", false), "$x_i + y$");
+        assert_eq!(math_span("a + b", true), "$$a + b$$");
+        assert_eq!(math_span("a\n+ b", false), "$a + b$");
     }
 
     #[test]

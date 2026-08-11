@@ -1,0 +1,3 @@
+input.md:1:10: note: non-ASCII punctuation '“' (replaced with "\"")
+input.md:1:66: note: non-ASCII punctuation '”' (replaced with "\"")
+input.md:1:68: note: non-ASCII punctuation '—' (replaced with "--")

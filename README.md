@@ -89,7 +89,8 @@ The style is fixed. Every choice is made for you:
 | Hard breaks           | A trailing backslash.                                                                                                                                                                                           |
 | Links                 | Reference links become inline links. Link definitions are removed.                                                                                                                                              |
 | Tables                | Padded pipes aligned by display width. Exempt from the 80-column limit.                                                                                                                                         |
-| Front matter and HTML | Pass through unchanged.                                                                                                                                                                                         |
+| Math                  | `$...$` and `$$...$$` pass through untouched: no escaping, no punctuation conversion. A `$$` block alone in a paragraph keeps its fences on their own lines.                                                    |
+| Front matter and HTML | Pass through unchanged. Front matter can be YAML (`---`) or TOML (`+++`).                                                                                                                                       |
 | Blank lines           | Exactly one between blocks, one trailing newline, LF line endings.                                                                                                                                              |
 
 Formatting is idempotent: `passdown fix` twice always equals `passdown fix`

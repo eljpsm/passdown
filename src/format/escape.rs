@@ -85,6 +85,11 @@ pub fn escape_line_start(line: String) -> String {
             if bytes[0] == b'-' && bytes.iter().all(|&b| b == b'-') {
                 return escape_at(&line, 0);
             }
+            // A bare `+++` at the top of a document would flip the front
+            // matter delimiter to TOML on reparse.
+            if line == "+++" {
+                return escape_at(&line, 0);
+            }
         }
         b'=' if bytes.iter().all(|&b| b == b'=') => {
             return escape_at(&line, 0);
@@ -150,6 +155,8 @@ mod tests {
         assert_eq!(escape_line_start("1984)".into()), "1984\\)");
         assert_eq!(escape_line_start("3.14".into()), "3.14");
         assert_eq!(escape_line_start("---".into()), "\\---");
+        assert_eq!(escape_line_start("+++".into()), "\\+++");
+        assert_eq!(escape_line_start("+++x".into()), "+++x");
         assert_eq!(escape_line_start("===".into()), "\\===");
         assert_eq!(escape_line_start("~~~x".into()), "\\~~~x");
         assert_eq!(escape_line_start("~~x~~".into()), "~~x~~");
