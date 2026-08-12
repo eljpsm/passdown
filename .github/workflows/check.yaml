@@ -27,12 +27,5 @@ jobs:
 
       - uses: ./.github/actions/setup
 
-      - name: fmt
-        run: nix develop --command cargo fmt --check
-
-      - name: lint
-        run: nix develop --command make lint
-
-      # The repo's own Markdown must satisfy the formatter it ships.
-      - name: self-check
-        run: nix develop --command cargo run --quiet -- check .
+      - name: hooks
+        run: nix develop --command prek run --all-files --stage pre-push --skip test

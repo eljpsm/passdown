@@ -1,0 +1,58 @@
+#:schema https://www.schemastore.org/prek.json
+
+default_install_hook_types = ["pre-commit", "pre-push"]
+
+# Fixtures are byte-exact input and expected output. Hard breaks end a line
+# with two spaces on purpose, so no hook may touch them.
+exclude = "^tests/fixtures/"
+
+[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "trailing-whitespace" },
+  { id = "end-of-file-fixer" },
+  { id = "check-toml" },
+  { id = "check-yaml" },
+  { id = "check-merge-conflict" },
+  { id = "detect-private-key" },
+]
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "fmt"
+name = "cargo fmt"
+language = "system"
+entry = "cargo fmt --check"
+types = ["rust"]
+pass_filenames = false
+stages = ["pre-push"]
+
+[[repos.hooks]]
+id = "lint"
+name = "make lint"
+language = "system"
+entry = "make lint"
+pass_filenames = false
+always_run = true
+stages = ["pre-push"]
+
+[[repos.hooks]]
+id = "test"
+name = "cargo test"
+language = "system"
+entry = "cargo test"
+pass_filenames = false
+always_run = true
+stages = ["pre-push"]
+
+# The repo's own Markdown must satisfy the formatter it ships.
+[[repos.hooks]]
+id = "self-check"
+name = "passdown check"
+language = "system"
+entry = "cargo run --quiet -- check ."
+pass_filenames = false
+always_run = true
+stages = ["pre-push"]

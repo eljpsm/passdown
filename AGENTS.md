@@ -15,6 +15,13 @@ Common tasks live in the [Makefile](Makefile).
 
 To run unit tests matching a name, use cargo directly: `cargo test escape`.
 
+## Hooks
+
+`make hooks` installs the git hooks defined in [prek.toml](prek.toml). On
+commit, prek's builtin file checks. On push, those plus `cargo fmt --check`,
+`make lint`, `cargo test`, and the self-check on this repo's own Markdown. CI
+runs the same set.
+
 ## Releases
 
 Bump the version in Cargo.toml, commit, then `make release`. It tags

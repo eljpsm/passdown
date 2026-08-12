@@ -1,4 +1,4 @@
-.PHONY: build install test test-format test-cli coverage coverage-html lint fmt bless release
+.PHONY: build install test test-format test-cli coverage coverage-html lint fmt bless hooks release
 
 VERSION = $(shell sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)
 
@@ -42,6 +42,10 @@ fmt:
 # Review the diff afterwards -- blessing accepts whatever the code produces.
 bless:
 	PASSDOWN_BLESS=1 cargo test
+
+# Install the git hooks from prek.toml. Run once per checkout.
+hooks:
+	prek install
 
 # Tag the current commit with the Cargo.toml version and push the tag.
 # CI then runs goreleaser and publishes the binaries.
