@@ -15,7 +15,7 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 # Exact pin: the output is part of the contract and comrak releases change
 # rendering.
-comrak = { version = "=0.54.0", default-features = false }
+comrak = { version = "=0.55.0", default-features = false }
 ignore = "0.4"
 rayon = "1"
 serde = { version = "1", features = ["derive"] }
