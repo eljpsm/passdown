@@ -35,6 +35,30 @@ passdown check
 | `1`       | Issues found (unformatted files or unfixable errors).  |
 | `2`       | Operational failure (unreadable file, invalid config). |
 
+### Staged files only
+
+```bash
+git diff --cached --name-only --diff-filter=ACMR -z -- '*.md' '*.markdown' \
+  | xargs -0 -r passdown check
+```
+
+Keep `-r`: with nothing staged, xargs would otherwise run `passdown check` with
+no arguments and walk the whole tree. xargs reports any failure as exit 123, so
+use a hook runner when the exit code matters. With
+[prek](https://github.com/j178/prek):
+
+```toml
+[[repos.hooks]]
+id = "passdown"
+name = "passdown check"
+language = "system"
+entry = "passdown check"
+types = ["markdown"]
+```
+
+Explicitly named files bypass `ignore` and `.gitignore`, so exclude files in the
+hook config instead.
+
 ## Configuration
 
 There are exactly two options, read from a `passdown.toml` found by walking
