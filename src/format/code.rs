@@ -51,22 +51,28 @@ pub fn serialize_code_block<'a>(
 
 /// Long enough that no literal line can close the fence early: at least
 /// three, and one more than the longest leading `fence_char` run in the
-/// content. A closing fence may be indented up to three columns, so runs
-/// after such an indent count too. A tab can be as narrow as one column, so
-/// each counts as one.
+/// content.
 fn fence_length(literal: &str, fence_char: char) -> usize {
     let longest = literal
         .lines()
-        .map(|line| {
-            let content = line.trim_start_matches([' ', '\t']);
-            if line.len() - content.len() > 3 {
-                return 0;
-            }
-            content.chars().take_while(|&c| c == fence_char).count()
-        })
+        .filter_map(|line| leading_run(line, fence_char))
+        .map(|(run, _)| run)
         .max()
         .unwrap_or(0);
     (longest + 1).max(3)
+}
+
+/// The `fence_char` run a line starts with, and the rest of the line. A
+/// closing fence may be indented up to three columns, so a run after such an
+/// indent counts too. A tab can be as narrow as one column, so each counts
+/// as one.
+fn leading_run(line: &str, fence_char: char) -> Option<(usize, &str)> {
+    let content = line.trim_start_matches([' ', '\t']);
+    if line.len() - content.len() > 3 {
+        return None;
+    }
+    let rest = content.trim_start_matches(fence_char);
+    Some((content.len() - rest.len(), rest))
 }
 
 /// Re-emit an unfixable block from its parsed fields, not from source
@@ -82,9 +88,23 @@ fn emit_untyped(s: &mut Serializer<'_>, code: &NodeCodeBlock) {
     // Content keeps the fence's indent: the parser strips up to that many
     // spaces, and a fence-like line without it would close the block.
     let indent = " ".repeat(code.fence_offset);
-    let marker = char::from(code.fence_char)
-        .to_string()
-        .repeat(code.fence_length);
+    let fence_char = char::from(code.fence_char);
+    // A tab's width depends on its column, and the content column can move.
+    // A line the source indented past a closing fence may then close it, so
+    // grow the fence past every run that could. Only a run with nothing but
+    // whitespace after it can close a fence.
+    let closing = code
+        .literal
+        .lines()
+        .filter_map(|line| {
+            leading_run(&format!("{indent}{line}"), fence_char)
+                .filter(|(_, rest)| rest.trim_matches([' ', '\t']).is_empty())
+                .map(|(run, _)| run + 1)
+        })
+        .max()
+        .unwrap_or(0);
+    let length = code.fence_length.max(closing);
+    let marker = fence_char.to_string().repeat(length);
     let fence = format!("{indent}{marker}");
     s.push_line(&fence);
     push_indented(s, &indent, &code.literal);
@@ -156,6 +176,20 @@ mod tests {
     fn untyped_unclosed_fence_is_closed_and_keeps_blank_lines() {
         let code = fenced("```", 0, "x\n\n", false);
         assert_eq!(untyped("- ", "  ", code), "- ```\n  x\n\n  ```\n");
+    }
+
+    #[test]
+    fn untyped_fence_grows_past_tab_indented_runs() {
+        let code = fenced("```", 0, "a\n\t```\n", true);
+        assert_eq!(untyped("- ", "  ", code), "- ````\n  a\n  \t```\n  ````\n");
+        let code = fenced("```", 2, "\t```\n", true);
+        assert_eq!(untyped("- ", "  ", code), "-   ````\n    \t```\n    ````\n");
+    }
+
+    #[test]
+    fn untyped_fence_ignores_runs_that_cannot_close_it() {
+        let code = fenced("```", 0, "```rust\n", true);
+        assert_eq!(untyped("- ", "  ", code), "- ```\n  ```rust\n  ```\n");
     }
 
     #[test]
