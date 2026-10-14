@@ -2,8 +2,8 @@
 name = "passdown"
 version = "0.1.0"
 edition = "2024"
-# Floor set by let-chains, stabilized in 1.88.
-rust-version = "1.88"
+# Floor set by comrak 0.56.
+rust-version = "1.89"
 license = "GPL-3.0-or-later"
 autolib = false
 publish = false

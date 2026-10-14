@@ -6,7 +6,8 @@
 //! 3. HTML equivalence: input and expected render to the same HTML
 //!    (whitespace-normalized outside `<pre>`), unless the case opts out with
 //!    a `no-html-check` marker file (punctuation normalization changes text
-//!    content on purpose).
+//!    content on purpose, and comrak renders an unused duplicate footnote
+//!    definition where it is written).
 //!
 //! Bless expected files with: `PASSDOWN_BLESS=1 cargo test`
 

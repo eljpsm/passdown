@@ -53,8 +53,13 @@ impl<'a> Serializer<'a> {
     /// `first` together (e.g. `- - inner` for a list directly inside a
     /// list item).
     fn compose_prefix(&mut self) -> String {
+        self.compose_frames(self.prefix.len())
+    }
+
+    /// `compose_prefix` over the bottom `count` frames only.
+    fn compose_frames(&mut self, count: usize) -> String {
         let mut composed = String::new();
-        for frame in &mut self.prefix {
+        for frame in &mut self.prefix[..count] {
             if frame.used_first {
                 composed.push_str(&frame.cont);
             } else {
@@ -65,15 +70,60 @@ impl<'a> Serializer<'a> {
         composed
     }
 
+    /// Index of the third frame in a run of unspent `- ` markers, if any.
+    /// Three such markers alone on a line reparse as a thematic break.
+    fn dash_run_cut(&self) -> Option<usize> {
+        let mut run = 0;
+        self.prefix.iter().position(|frame| {
+            run = if !frame.used_first && frame.first == "- " {
+                run + 1
+            } else {
+                0
+            };
+            run == 3
+        })
+    }
+
+    /// The column where the next line's content starts. Counted in bytes, as
+    /// the parser counts columns for tab stops.
+    pub fn next_column(&self) -> usize {
+        self.prefix
+            .iter()
+            .map(|f| if f.used_first { &f.cont } else { &f.first }.len())
+            .sum()
+    }
+
     /// Emit one line of content under the current prefix. Trailing whitespace
     /// is always trimmed (this is what turns a blank quoted line into a bare
     /// `>`).
     pub fn push_line(&mut self, content: &str) {
+        // A marker-only line must not hold `- - -`. Spend the markers before
+        // the third on a line of their own.
+        if content.is_empty() {
+            while let Some(cut) = self.dash_run_cut() {
+                let markers = self.compose_frames(cut);
+                self.out.push_str(markers.trim_end());
+                self.out.push('\n');
+            }
+        }
         let prefix = self.compose_prefix();
         let mut line = prefix;
         line.push_str(content);
         let trimmed = line.trim_end();
         self.out.push_str(trimmed);
+        self.out.push('\n');
+    }
+
+    /// Emit one line of a literal block (code, HTML, front matter). Trailing
+    /// whitespace is content there, so only an empty line is trimmed.
+    pub fn push_literal_line(&mut self, content: &str) {
+        if content.is_empty() {
+            self.push_line("");
+            return;
+        }
+        let prefix = self.compose_prefix();
+        self.out.push_str(&prefix);
+        self.out.push_str(content);
         self.out.push('\n');
     }
 
@@ -138,6 +188,16 @@ mod tests {
     }
 
     #[test]
+    fn marker_only_line_never_forms_thematic_break() {
+        let mut s = Serializer::new(vec![]);
+        s.push_prefix("- ", "  ");
+        s.push_prefix("- ", "  ");
+        s.push_prefix("- ", "  ");
+        s.push_line("");
+        assert_eq!(s.finish(), "- -\n    -\n");
+    }
+
+    #[test]
     fn blank_line_in_quote_is_bare_marker() {
         let mut s = Serializer::new(vec![]);
         s.push_prefix("> ", "> ");
@@ -145,6 +205,16 @@ mod tests {
         s.push_blank();
         s.push_line("b");
         assert_eq!(s.finish(), "> a\n>\n> b\n");
+    }
+
+    #[test]
+    fn literal_line_keeps_trailing_whitespace() {
+        let mut s = Serializer::new(vec![]);
+        s.push_prefix("> ", "> ");
+        s.push_literal_line("a  ");
+        s.push_literal_line("");
+        s.push_literal_line("b");
+        assert_eq!(s.finish(), "> a  \n>\n> b\n");
     }
 
     #[test]

@@ -1,0 +1,4 @@
+input.md:4:6: error: code fence has no language
+input.md:14:7: error: code fence has no language
+input.md:25:10: error: code fence has no language
+input.md:32:8: error: code fence has no language

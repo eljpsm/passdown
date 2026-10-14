@@ -1,0 +1,12 @@
+input.md:6:5: error: indented code block (convert to a fenced block with a language)
+input.md:12:5: error: indented code block (convert to a fenced block with a language)
+input.md:18:7: error: indented code block (convert to a fenced block with a language)
+input.md:28:7: error: indented code block (convert to a fenced block with a language)
+input.md:34:4: error: code fence has no language
+input.md:57:5: error: indented code block (convert to a fenced block with a language)
+input.md:61:5: error: indented code block (convert to a fenced block with a language)
+input.md:65:7: error: indented code block (convert to a fenced block with a language)
+input.md:69:7: error: indented code block (convert to a fenced block with a language)
+input.md:75:7: error: indented code block (convert to a fenced block with a language)
+input.md:79:7: error: indented code block (convert to a fenced block with a language)
+input.md:85:9: error: indented code block (convert to a fenced block with a language)

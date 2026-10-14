@@ -1,8 +1,8 @@
 //! The formatter: comrak as parser only, plus a hand-written serializer.
 //! The serializer keeps the original source lines alongside the AST so
-//! disable directives and unfixable blocks can be reproduced verbatim via
-//! sourcepos. See `state::Serializer` for the two invariants everything
-//! else hangs on (prefix stack, chunk-based wrapping).
+//! disable directives can be reproduced verbatim via sourcepos. See
+//! `state::Serializer` for the two invariants everything else hangs on
+//! (prefix stack, chunk-based wrapping).
 
 mod block;
 mod code;

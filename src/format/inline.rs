@@ -82,13 +82,84 @@ impl ChunkBuilder {
 
 /// Flatten the inline children of a block node into wrap-ready chunks.
 /// Prose text passes through ASCII punctuation normalization, reporting each
-/// converted character as a Note diagnostic.
+/// converted character as a Note diagnostic. A line that normalization would
+/// leave empty is written as character references instead (see
+/// `walk_inlines`).
 pub fn collect_chunks<'a>(node: &'a AstNode<'a>, diags: &mut Vec<Diagnostic>) -> Vec<Chunk> {
     let mut builder = ChunkBuilder::new();
-    for child in node.children() {
-        walk(&mut builder, child, diags);
+    let children: Vec<_> = node.children().collect();
+    let lines = children.split(|n| matches!(n.data.borrow().value, NodeValue::LineBreak));
+    for (i, line) in lines.enumerate() {
+        if i > 0 {
+            builder.hard_break();
+        }
+        walk_inlines(&mut builder, line, diags);
     }
     builder.finish()
+}
+
+/// Walk sibling inlines. Normalization and whitespace splitting can leave
+/// text that renders, such as an `&nbsp;` line or `*&nbsp;*`, with nothing
+/// in it, which drops it or changes it on reparse. Such text keeps its
+/// characters as references, and so is not normalized.
+fn walk_inlines<'a>(b: &mut ChunkBuilder, nodes: &[&'a AstNode<'a>], diags: &mut Vec<Diagnostic>) {
+    if is_blank(nodes) {
+        references(b, nodes);
+    } else {
+        for &node in nodes {
+            walk(b, node, diags);
+        }
+    }
+}
+
+/// True when the nodes are text that normalization and whitespace splitting
+/// leave empty. Any other inline, a nested emphasis included, renders on its
+/// own and makes them not blank.
+fn is_blank<'a>(nodes: &[&'a AstNode<'a>]) -> bool {
+    let mut any_text = false;
+    for node in nodes.iter().flat_map(|n| n.descendants()) {
+        match &node.data.borrow().value {
+            NodeValue::Text(literal) => {
+                if normalize::normalize(literal)
+                    .0
+                    .split_whitespace()
+                    .next()
+                    .is_some()
+                {
+                    return false;
+                }
+                any_text = true;
+            }
+            NodeValue::SoftBreak | NodeValue::LineBreak => {}
+            _ => return false,
+        }
+    }
+    any_text
+}
+
+/// Write the nodes' text as character references. Whitespace and soft
+/// breaks become references too: a literal space would merge with the text
+/// around it on reparse and read differently.
+fn references<'a>(b: &mut ChunkBuilder, nodes: &[&'a AstNode<'a>]) {
+    for node in nodes.iter().flat_map(|n| n.descendants()) {
+        match &node.data.borrow().value {
+            NodeValue::Text(literal) => {
+                b.piece(&literal.chars().map(reference).collect::<String>());
+            }
+            NodeValue::SoftBreak => b.piece(&reference('\n')),
+            NodeValue::LineBreak => b.hard_break(),
+            _ => {}
+        }
+    }
+}
+
+/// A character reference for `ch`.
+fn reference(ch: char) -> String {
+    if ch == '\u{a0}' {
+        "&nbsp;".to_string()
+    } else {
+        format!("&#x{:X};", u32::from(ch))
+    }
 }
 
 /// Inline content joined on single spaces, for contexts that never wrap
@@ -124,23 +195,17 @@ fn walk<'a>(b: &mut ChunkBuilder, node: &'a AstNode<'a>, diags: &mut Vec<Diagnos
         NodeValue::Code(code) => b.piece(&code_span(&code.literal)),
         NodeValue::Emph => {
             b.open("*");
-            for child in node.children() {
-                walk(b, child, diags);
-            }
+            walk_inlines(b, &node.children().collect::<Vec<_>>(), diags);
             b.close("*");
         }
         NodeValue::Strong => {
             b.open("**");
-            for child in node.children() {
-                walk(b, child, diags);
-            }
+            walk_inlines(b, &node.children().collect::<Vec<_>>(), diags);
             b.close("**");
         }
         NodeValue::Strikethrough => {
             b.open("~~");
-            for child in node.children() {
-                walk(b, child, diags);
-            }
+            walk_inlines(b, &node.children().collect::<Vec<_>>(), diags);
             b.close("~~");
         }
         NodeValue::Link(link) => {
@@ -148,17 +213,13 @@ fn walk<'a>(b: &mut ChunkBuilder, node: &'a AstNode<'a>, diags: &mut Vec<Diagnos
                 b.piece(&auto);
             } else {
                 b.open("[");
-                for child in node.children() {
-                    walk(b, child, diags);
-                }
+                walk_inlines(b, &node.children().collect::<Vec<_>>(), diags);
                 b.close(&format!("]({})", destination(&link.url, &link.title)));
             }
         }
         NodeValue::Image(link) => {
             b.open("![");
-            for child in node.children() {
-                walk(b, child, diags);
-            }
+            walk_inlines(b, &node.children().collect::<Vec<_>>(), diags);
             b.close(&format!("]({})", destination(&link.url, &link.title)));
         }
         NodeValue::Math(math) => b.piece(&math_span(&math.literal, math.display_math)),
@@ -168,9 +229,7 @@ fn walk<'a>(b: &mut ChunkBuilder, node: &'a AstNode<'a>, diags: &mut Vec<Diagnos
         NodeValue::HtmlInline(literal) => b.piece(literal),
         // Anything unexpected: recurse so no content is silently dropped.
         _ => {
-            for child in node.children() {
-                walk(b, child, diags);
-            }
+            walk_inlines(b, &node.children().collect::<Vec<_>>(), diags);
         }
     }
 }

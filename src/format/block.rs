@@ -7,10 +7,7 @@ use super::state::Serializer;
 use super::table::serialize_table;
 use super::wrap::wrap;
 
-/// Serialize a run of sibling blocks with exactly one blank line between them.
-/// Adjacent lists of the same type get an `<!-- -->` separator: the fixed
-/// style normalizes every bullet to `-` and every ordered delimiter to `.`,
-/// so without it, lists that differed only by marker would merge on reparse.
+/// Serialize a run of sibling blocks, `separate`d from each other.
 pub fn serialize_blocks<'a>(
     s: &mut Serializer<'_>,
     children: impl Iterator<Item = &'a AstNode<'a>>,
@@ -18,26 +15,127 @@ pub fn serialize_blocks<'a>(
     let mut prev: Option<&AstNode<'_>> = None;
     for child in children {
         if let Some(prev) = prev {
-            s.push_blank();
-            if needs_list_separator(prev, child) {
-                s.push_line("<!-- -->");
-                s.push_blank();
-            }
+            separate(s, prev, child, false);
         }
         serialize_block(s, child);
         prev = Some(child);
     }
 }
 
-/// True when `prev` and `next` are lists of the same type, which would merge
-/// into one list on reparse without a separator between them.
-pub fn needs_list_separator<'a>(prev: &'a AstNode<'a>, next: &'a AstNode<'a>) -> bool {
-    let list_type = |node: &AstNode<'_>| match &node.data.borrow().value {
-        NodeValue::List(list) => Some(list.list_type),
-        _ => None,
-    };
-    match (list_type(prev), list_type(next)) {
-        (Some(a), Some(b)) => a == b,
+/// Separate `next` from its sibling `prev`: one blank line, plus an
+/// `<!-- -->` separator where `needs_separator` says so. Inside a tight list
+/// item there are no blank lines, which would make the list loose on reparse.
+pub fn separate<'a>(
+    s: &mut Serializer<'_>,
+    prev: &'a AstNode<'a>,
+    next: &'a AstNode<'a>,
+    tight: bool,
+) {
+    if !tight && !ends_with_blank_line(prev) && !definition_ends_in_open_html(prev) {
+        s.push_blank();
+    }
+    if needs_separator(prev, next, tight) {
+        s.push_line("<!-- -->");
+        if !tight {
+            s.push_blank();
+        }
+    }
+}
+
+/// True when the block's last emitted line is already blank. An unclosed
+/// HTML block (`<pre>` with no `</pre>`) runs to the end of its container
+/// and keeps the blank lines it took in. Another blank after it would be
+/// taken in too. A quote's blank lines are `>` lines, so it never counts.
+fn ends_with_blank_line<'a>(node: &'a AstNode<'a>) -> bool {
+    match &node.data.borrow().value {
+        NodeValue::HtmlBlock(html) => html
+            .literal
+            .lines()
+            .last()
+            .is_some_and(|line| line.trim_matches([' ', '\t']).is_empty()),
+        NodeValue::List(_)
+        | NodeValue::Item(_)
+        | NodeValue::TaskItem(_)
+        | NodeValue::FootnoteDefinition(_) => node.last_child().is_some_and(ends_with_blank_line),
+        _ => false,
+    }
+}
+
+/// True for a footnote definition that ends in an unclosed HTML block. A
+/// definition stays open across a blank line, so the block would take in a
+/// blank written after it. The next unindented line ends both.
+fn definition_ends_in_open_html<'a>(node: &'a AstNode<'a>) -> bool {
+    matches!(node.data.borrow().value, NodeValue::FootnoteDefinition(_)) && ends_in_open_html(node)
+}
+
+/// True when the block's last block is an HTML block whose end condition
+/// (`</pre>`, `-->` and so on) never came.
+fn ends_in_open_html<'a>(node: &'a AstNode<'a>) -> bool {
+    match &node.data.borrow().value {
+        NodeValue::HtmlBlock(html) => {
+            let last = html
+                .literal
+                .lines()
+                .last()
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            match html.block_type {
+                1 => !["</script>", "</pre>", "</style>", "</textarea>"]
+                    .iter()
+                    .any(|end| last.contains(end)),
+                2 => !last.contains("-->"),
+                3 => !last.contains("?>"),
+                4 => !last.contains('>'),
+                5 => !last.contains("]]>"),
+                _ => false,
+            }
+        }
+        NodeValue::List(_)
+        | NodeValue::Item(_)
+        | NodeValue::TaskItem(_)
+        | NodeValue::FootnoteDefinition(_) => node.last_child().is_some_and(ends_in_open_html),
+        _ => false,
+    }
+}
+
+/// True when `prev` and `next` would merge on reparse without an `<!-- -->`
+/// between them:
+///
+/// - Lists of the same type. The fixed style normalizes every bullet to `-`
+///   and every ordered delimiter to `.`, so lists that differed only by
+///   marker would become one.
+/// - A list, then a block that starts indented. Markers get one space after
+///   them, which narrows the content column, so the block would fall into the
+///   last item.
+/// - Two indented code blocks. A link definition between them is dropped from
+///   the output, and the blocks would join into one.
+/// - In a tight list item, a paragraph then a list whose first item is empty.
+///   An empty item cannot interrupt a paragraph: a bare `-` would underline
+///   it as a heading, and a bare `1.` would join it.
+pub fn needs_separator<'a>(prev: &'a AstNode<'a>, next: &'a AstNode<'a>, tight: bool) -> bool {
+    match (&prev.data.borrow().value, &next.data.borrow().value) {
+        (NodeValue::Paragraph, NodeValue::List(_)) => {
+            tight
+                && next.first_child().is_some_and(|item| {
+                    matches!(item.data.borrow().value, NodeValue::Item(_))
+                        && item.first_child().is_none()
+                })
+        }
+        (NodeValue::List(a), NodeValue::List(b)) => a.list_type == b.list_type,
+        (NodeValue::List(_), next) => starts_indented(next),
+        (NodeValue::CodeBlock(a), NodeValue::CodeBlock(b)) => !a.fenced && !b.fenced,
+        _ => false,
+    }
+}
+
+/// True when the block's first emitted line starts with whitespace: indented
+/// code, an untyped fence that keeps its offset, or an indented HTML block.
+pub fn starts_indented(value: &NodeValue) -> bool {
+    match value {
+        NodeValue::CodeBlock(code) => {
+            !code.fenced || (code.info.is_empty() && code.fence_offset > 0)
+        }
+        NodeValue::HtmlBlock(html) => html.literal.starts_with([' ', '\t']),
         _ => false,
     }
 }
@@ -75,6 +173,43 @@ fn serialize_display_math(s: &mut Serializer<'_>, literal: &str) {
     s.push_line("$$");
 }
 
+/// `---`, except where it misparses. In a list item it can join a `- `
+/// marker into a bare break or underline the paragraph above it as a
+/// heading. As the first block it opens front matter. `***` has neither
+/// problem.
+fn thematic_break<'a>(node: &'a AstNode<'a>) -> &'static str {
+    let in_list = node
+        .ancestors()
+        .any(|n| matches!(n.data.borrow().value, NodeValue::List(_)));
+    let first = node.previous_sibling().is_none()
+        && node
+            .parent()
+            .is_some_and(|p| matches!(p.data.borrow().value, NodeValue::Document));
+    if in_list || first { "***" } else { "---" }
+}
+
+/// The line as emitted at `column`. A tab's width depends on its column, so
+/// at a new column the indent can reach four columns and turn an HTML block
+/// into indented code. Only then is each tab replaced with one space. The
+/// source indent was at most three columns and each tab took at least one,
+/// so that keeps it an HTML block. Otherwise the tabs stay, since they can
+/// be content (inside a `<pre>` an earlier block opened).
+fn untab_indent(line: &str, column: usize) -> String {
+    let rest = line.trim_start_matches([' ', '\t']);
+    let indent = &line[..line.len() - rest.len()];
+    let end = indent.chars().fold(column, |col, c| {
+        if c == '\t' {
+            col + 4 - col % 4
+        } else {
+            col + 1
+        }
+    });
+    if end - column < 4 {
+        return line.to_string();
+    }
+    format!("{}{rest}", indent.replace('\t', " "))
+}
+
 /// Dispatch one block node to its serializer. Every arm clones or copies
 /// what it needs out of `data` and then drops the borrow. Serializing
 /// children re-borrows `node.data`, so holding it across the call would
@@ -106,11 +241,16 @@ pub fn serialize_block<'a>(s: &mut Serializer<'_>, node: &'a AstNode<'a>) {
         }
         NodeValue::ThematicBreak => {
             drop(data);
-            s.push_line("---");
+            s.push_line(thematic_break(node));
         }
         NodeValue::BlockQuote => {
             drop(data);
             s.push_prefix("> ", "> ");
+            // An empty quote still needs its `>`, or its neighbours would
+            // merge.
+            if node.first_child().is_none() {
+                s.push_line("");
+            }
             serialize_blocks(s, node.children());
             s.pop_prefix();
         }
@@ -151,6 +291,15 @@ pub fn serialize_block<'a>(s: &mut Serializer<'_>, node: &'a AstNode<'a>) {
             let first = format!("[^{}]: ", def.name);
             drop(data);
             s.push_prefix(&first, "    ");
+            // The parser skips spaces after `[^n]:`, so an indented first
+            // block has to start on the next line. An empty definition still
+            // needs its label.
+            if node
+                .first_child()
+                .is_none_or(|child| starts_indented(&child.data.borrow().value))
+            {
+                s.push_line("");
+            }
             serialize_blocks(s, node.children());
             s.pop_prefix();
         }
@@ -158,18 +307,23 @@ pub fn serialize_block<'a>(s: &mut Serializer<'_>, node: &'a AstNode<'a>) {
             let literal = literal.clone();
             drop(data);
             for line in literal.trim_end_matches('\n').lines() {
-                s.push_line(line);
+                s.push_literal_line(line);
             }
         }
         NodeValue::HtmlBlock(html) => {
             let literal = html.literal.clone();
             drop(data);
-            for line in literal.trim_end_matches('\n').lines() {
-                s.push_line(line);
+            for (i, line) in literal.lines().enumerate() {
+                if i == 0 {
+                    let column = s.next_column();
+                    s.push_literal_line(&untab_indent(line, column));
+                } else {
+                    s.push_literal_line(line);
+                }
             }
         }
-        // Not yet implemented: emit the block verbatim from source. Only
-        // reachable at the top level while milestones land.
+        // Unreachable with the extensions comrak_options enables. Keep the
+        // source of any block a comrak upgrade adds rather than drop it.
         _ => {
             let sourcepos = data.sourcepos;
             drop(data);
