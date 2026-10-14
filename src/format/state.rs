@@ -53,8 +53,13 @@ impl<'a> Serializer<'a> {
     /// `first` together (e.g. `- - inner` for a list directly inside a
     /// list item).
     fn compose_prefix(&mut self) -> String {
+        self.compose_frames(self.prefix.len())
+    }
+
+    /// `compose_prefix` over the bottom `count` frames only.
+    fn compose_frames(&mut self, count: usize) -> String {
         let mut composed = String::new();
-        for frame in &mut self.prefix {
+        for frame in &mut self.prefix[..count] {
             if frame.used_first {
                 composed.push_str(&frame.cont);
             } else {
@@ -65,10 +70,33 @@ impl<'a> Serializer<'a> {
         composed
     }
 
+    /// Index of the third frame in a run of unspent `- ` markers, if any.
+    /// Three such markers alone on a line reparse as a thematic break.
+    fn dash_run_cut(&self) -> Option<usize> {
+        let mut run = 0;
+        self.prefix.iter().position(|frame| {
+            run = if !frame.used_first && frame.first == "- " {
+                run + 1
+            } else {
+                0
+            };
+            run == 3
+        })
+    }
+
     /// Emit one line of content under the current prefix. Trailing whitespace
     /// is always trimmed (this is what turns a blank quoted line into a bare
     /// `>`).
     pub fn push_line(&mut self, content: &str) {
+        // A marker-only line must not hold `- - -`. Spend the markers before
+        // the third on a line of their own.
+        if content.is_empty() {
+            while let Some(cut) = self.dash_run_cut() {
+                let markers = self.compose_frames(cut);
+                self.out.push_str(markers.trim_end());
+                self.out.push('\n');
+            }
+        }
         let prefix = self.compose_prefix();
         let mut line = prefix;
         line.push_str(content);
@@ -135,6 +163,16 @@ mod tests {
         s.push_line("inner");
         s.push_line("more");
         assert_eq!(s.finish(), "- - inner\n    more\n");
+    }
+
+    #[test]
+    fn marker_only_line_never_forms_thematic_break() {
+        let mut s = Serializer::new(vec![]);
+        s.push_prefix("- ", "  ");
+        s.push_prefix("- ", "  ");
+        s.push_prefix("- ", "  ");
+        s.push_line("");
+        assert_eq!(s.finish(), "- -\n    -\n");
     }
 
     #[test]

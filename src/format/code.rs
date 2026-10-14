@@ -56,7 +56,7 @@ pub fn serialize_code_block<'a>(
 
     let fence = "`".repeat(fence_length(&code.literal));
     s.push_line(&format!("{fence}{info}"));
-    for line in code.literal.trim_end_matches('\n').lines() {
+    for line in code.literal.lines() {
         s.push_line(line);
     }
     s.push_line(&fence);

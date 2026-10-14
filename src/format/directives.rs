@@ -1,6 +1,6 @@
 use comrak::nodes::{AstNode, NodeValue};
 
-use super::block::{needs_list_separator, serialize_block};
+use super::block::{needs_separator, serialize_block};
 use super::state::Serializer;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,7 +76,7 @@ pub fn serialize_document<'a>(s: &mut Serializer<'_>, root: &'a AstNode<'a>) {
             _ => {
                 if let Some(prev) = prev {
                     s.push_blank();
-                    if needs_list_separator(prev, child) {
+                    if needs_separator(prev, child) {
                         s.push_line("<!-- -->");
                         s.push_blank();
                     }

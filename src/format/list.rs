@@ -1,6 +1,6 @@
 use comrak::nodes::{AstNode, ListType, NodeList, NodeValue};
 
-use super::block::serialize_block;
+use super::block::{needs_separator, serialize_block, starts_indented};
 use super::inline::{Chunk, collect_chunks};
 use super::state::Serializer;
 use super::wrap::wrap;
@@ -41,6 +41,20 @@ fn serialize_item<'a>(
     };
     s.push_prefix(&first, &cont);
 
+    // Up to four spaces after a marker join the content column, so an
+    // indented first block would shift it. Start the block on the next line.
+    // Indented code is exempt: five or more spaces leave the column alone,
+    // and an item that starts blank can't interrupt a paragraph.
+    if checkbox.is_none()
+        && let Some(child) = item.first_child()
+        && match &child.data.borrow().value {
+            NodeValue::CodeBlock(code) if !code.fenced => false,
+            other => starts_indented(other),
+        }
+    {
+        s.push_line("");
+    }
+
     let mut emitted_any = false;
     let mut prev: Option<&AstNode<'_>> = None;
     for (i, child) in item.children().enumerate() {
@@ -48,7 +62,7 @@ fn serialize_item<'a>(
             s.push_blank();
         }
         if let Some(prev) = prev
-            && super::block::needs_list_separator(prev, child)
+            && needs_separator(prev, child)
         {
             // In a tight item the separator carries no blank lines. Blanks
             // inside the item would make the list loose on reparse and break

@@ -7,10 +7,8 @@ use super::state::Serializer;
 use super::table::serialize_table;
 use super::wrap::wrap;
 
-/// Serialize a run of sibling blocks with exactly one blank line between them.
-/// Adjacent lists of the same type get an `<!-- -->` separator: the fixed
-/// style normalizes every bullet to `-` and every ordered delimiter to `.`,
-/// so without it, lists that differed only by marker would merge on reparse.
+/// Serialize a run of sibling blocks with exactly one blank line between them,
+/// plus an `<!-- -->` separator where `needs_separator` says so.
 pub fn serialize_blocks<'a>(
     s: &mut Serializer<'_>,
     children: impl Iterator<Item = &'a AstNode<'a>>,
@@ -19,7 +17,7 @@ pub fn serialize_blocks<'a>(
     for child in children {
         if let Some(prev) = prev {
             s.push_blank();
-            if needs_list_separator(prev, child) {
+            if needs_separator(prev, child) {
                 s.push_line("<!-- -->");
                 s.push_blank();
             }
@@ -29,15 +27,34 @@ pub fn serialize_blocks<'a>(
     }
 }
 
-/// True when `prev` and `next` are lists of the same type, which would merge
-/// into one list on reparse without a separator between them.
-pub fn needs_list_separator<'a>(prev: &'a AstNode<'a>, next: &'a AstNode<'a>) -> bool {
-    let list_type = |node: &AstNode<'_>| match &node.data.borrow().value {
-        NodeValue::List(list) => Some(list.list_type),
-        _ => None,
-    };
-    match (list_type(prev), list_type(next)) {
-        (Some(a), Some(b)) => a == b,
+/// True when `prev` and `next` would merge on reparse without an `<!-- -->`
+/// between them:
+///
+/// - Lists of the same type. The fixed style normalizes every bullet to `-`
+///   and every ordered delimiter to `.`, so lists that differed only by
+///   marker would become one.
+/// - A list, then a block that starts indented. Markers get one space after
+///   them, which narrows the content column, so the block would fall into the
+///   last item.
+/// - Two indented code blocks. A link definition between them is dropped from
+///   the output, and the blocks would join into one.
+pub fn needs_separator<'a>(prev: &'a AstNode<'a>, next: &'a AstNode<'a>) -> bool {
+    match (&prev.data.borrow().value, &next.data.borrow().value) {
+        (NodeValue::List(a), NodeValue::List(b)) => a.list_type == b.list_type,
+        (NodeValue::List(_), next) => starts_indented(next),
+        (NodeValue::CodeBlock(a), NodeValue::CodeBlock(b)) => !a.fenced && !b.fenced,
+        _ => false,
+    }
+}
+
+/// True when the block's first emitted line starts with whitespace: indented
+/// code, an untyped fence that keeps its offset, or an indented HTML block.
+pub fn starts_indented(value: &NodeValue) -> bool {
+    match value {
+        NodeValue::CodeBlock(code) => {
+            !code.fenced || (code.info.trim().is_empty() && code.fence_offset > 0)
+        }
+        NodeValue::HtmlBlock(html) => html.literal.starts_with([' ', '\t']),
         _ => false,
     }
 }
@@ -151,6 +168,14 @@ pub fn serialize_block<'a>(s: &mut Serializer<'_>, node: &'a AstNode<'a>) {
             let first = format!("[^{}]: ", def.name);
             drop(data);
             s.push_prefix(&first, "    ");
+            // The parser skips spaces after `[^n]:`, so an indented first
+            // block has to start on the next line.
+            if node
+                .first_child()
+                .is_some_and(|child| starts_indented(&child.data.borrow().value))
+            {
+                s.push_line("");
+            }
             serialize_blocks(s, node.children());
             s.pop_prefix();
         }
