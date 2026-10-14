@@ -92,6 +92,21 @@ fn serialize_display_math(s: &mut Serializer<'_>, literal: &str) {
     s.push_line("$$");
 }
 
+/// `---`, except where it misparses. In a list item it can join a `- `
+/// marker into a bare break or underline the paragraph above it as a
+/// heading. As the first block it opens front matter. `***` has neither
+/// problem.
+fn thematic_break<'a>(node: &'a AstNode<'a>) -> &'static str {
+    let in_list = node
+        .ancestors()
+        .any(|n| matches!(n.data.borrow().value, NodeValue::List(_)));
+    let first = node.previous_sibling().is_none()
+        && node
+            .parent()
+            .is_some_and(|p| matches!(p.data.borrow().value, NodeValue::Document));
+    if in_list || first { "***" } else { "---" }
+}
+
 /// Dispatch one block node to its serializer. Every arm clones or copies
 /// what it needs out of `data` and then drops the borrow. Serializing
 /// children re-borrows `node.data`, so holding it across the call would
@@ -123,7 +138,7 @@ pub fn serialize_block<'a>(s: &mut Serializer<'_>, node: &'a AstNode<'a>) {
         }
         NodeValue::ThematicBreak => {
             drop(data);
-            s.push_line("---");
+            s.push_line(thematic_break(node));
         }
         NodeValue::BlockQuote => {
             drop(data);

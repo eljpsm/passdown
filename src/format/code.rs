@@ -31,8 +31,18 @@ pub fn serialize_code_block<'a>(
         return;
     }
 
-    let fence = "`".repeat(fence_length(&code.literal));
-    s.push_line(&format!("{fence}{info}"));
+    // A backtick fence cannot hold a backtick in its info string.
+    let fence_char = if info.contains('`') { '~' } else { '`' };
+    let fence = fence_char
+        .to_string()
+        .repeat(fence_length(&code.literal, fence_char));
+    // Without a space, `~~~` then `~a` would read as a longer fence.
+    let gap = if info.starts_with(fence_char) {
+        " "
+    } else {
+        ""
+    };
+    s.push_line(&format!("{fence}{gap}{info}"));
     for line in code.literal.lines() {
         s.push_literal_line(line);
     }
@@ -40,18 +50,19 @@ pub fn serialize_code_block<'a>(
 }
 
 /// Long enough that no literal line can close the fence early: at least
-/// three, and one more than the longest leading backtick run in the content.
-/// A closing fence may be indented up to three spaces, so runs after such an
-/// indent count too.
-fn fence_length(literal: &str) -> usize {
+/// three, and one more than the longest leading `fence_char` run in the
+/// content. A closing fence may be indented up to three columns, so runs
+/// after such an indent count too. A tab can be as narrow as one column, so
+/// each counts as one.
+fn fence_length(literal: &str, fence_char: char) -> usize {
     let longest = literal
         .lines()
         .map(|line| {
-            let content = line.trim_start_matches(' ');
+            let content = line.trim_start_matches([' ', '\t']);
             if line.len() - content.len() > 3 {
                 return 0;
             }
-            content.chars().take_while(|&c| c == '`').count()
+            content.chars().take_while(|&c| c == fence_char).count()
         })
         .max()
         .unwrap_or(0);
@@ -149,16 +160,24 @@ mod tests {
 
     #[test]
     fn fence_grows_past_content_backticks() {
-        assert_eq!(fence_length("plain\ncode\n"), 3);
-        assert_eq!(fence_length("```\n"), 4);
-        assert_eq!(fence_length("a\n``````\nb\n"), 7);
-        assert_eq!(fence_length(""), 3);
+        assert_eq!(fence_length("plain\ncode\n", '`'), 3);
+        assert_eq!(fence_length("```\n", '`'), 4);
+        assert_eq!(fence_length("a\n``````\nb\n", '`'), 7);
+        assert_eq!(fence_length("", '`'), 3);
     }
 
     #[test]
     fn fence_counts_runs_indented_up_to_three_spaces() {
-        assert_eq!(fence_length("   ```\n"), 4);
-        assert_eq!(fence_length("    ```\n"), 3);
-        assert_eq!(fence_length("  `````\n"), 6);
+        assert_eq!(fence_length("   ```\n", '`'), 4);
+        assert_eq!(fence_length("    ```\n", '`'), 3);
+        assert_eq!(fence_length("  `````\n", '`'), 6);
+        assert_eq!(fence_length("\t```\n", '`'), 4);
+        assert_eq!(fence_length("   \t```\n", '`'), 3);
+    }
+
+    #[test]
+    fn fence_counts_only_its_own_char() {
+        assert_eq!(fence_length("~~~\n", '~'), 4);
+        assert_eq!(fence_length("```\n", '~'), 3);
     }
 }

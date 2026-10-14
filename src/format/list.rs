@@ -93,6 +93,12 @@ fn serialize_item<'a>(
                 && let Some(checkbox) = checkbox
             {
                 s.push_line(checkbox);
+                // Indented code, a `2.` list or an empty item can't interrupt
+                // the `[ ]` line. A loose list allows a blank here, and a
+                // tight list never holds such a block.
+                if !list.tight {
+                    s.push_blank();
+                }
             }
             serialize_block(s, child);
         }
