@@ -32,3 +32,21 @@ Multi-line:
 
 &nbsp;
 &#32;
+
+Inside inline markup: *&nbsp;*, **&nbsp;**, ~~&nbsp;~~, ***&nbsp;***,
+[&nbsp;](https://example.com) and ![&nbsp;](a.png).
+
+A line after a hard break:
+
+foo  
+&nbsp;
+
+a  
+&nbsp;  
+b
+
+# &nbsp;
+
+| a      | b   |
+| ------ | --- |
+| &nbsp; | x   |
