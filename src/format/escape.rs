@@ -32,6 +32,25 @@ pub fn escape_text(text: &str) -> String {
     out
 }
 
+/// Escape a code fence's info string. The parser decodes entities in it,
+/// then backslash escapes, so a `&` that starts an entity is written as
+/// `&amp;` (a backslash would itself be decoded first) and a backslash before
+/// punctuation is doubled.
+pub fn escape_info(info: &str) -> String {
+    let mut out = String::with_capacity(info.len());
+    let chars: Vec<char> = info.chars().collect();
+    for (i, &ch) in chars.iter().enumerate() {
+        match ch {
+            '\\' if chars.get(i + 1).is_some_and(|c| c.is_ascii_punctuation()) => {
+                out.push_str("\\\\");
+            }
+            '&' if looks_like_entity(&chars[i + 1..]) => out.push_str("&amp;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
 /// True if `rest` begins like an HTML entity body (`amp;`, `#38;`, `#x26;`).
 fn looks_like_entity(rest: &[char]) -> bool {
     let mut i = 0;
@@ -142,6 +161,16 @@ mod tests {
         assert_eq!(escape_text("this & that"), "this & that");
         assert_eq!(escape_text("!x"), "!x");
         assert_eq!(escape_text("![x"), "\\!\\[x");
+    }
+
+    #[test]
+    fn info_keeps_escapes_and_references() {
+        assert_eq!(escape_info("rust"), "rust");
+        assert_eq!(escape_info("a\\*"), "a\\\\*");
+        assert_eq!(escape_info("a\\b"), "a\\b");
+        assert_eq!(escape_info("a&amp;b"), "a&amp;amp;b");
+        assert_eq!(escape_info("a&b"), "a&b");
+        assert_eq!(escape_info("\\&amp;"), "\\\\&amp;amp;");
     }
 
     #[test]

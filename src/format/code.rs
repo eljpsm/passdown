@@ -2,6 +2,7 @@ use comrak::nodes::{AstNode, NodeCodeBlock};
 
 use crate::diagnostics::{DiagKind, Diagnostic};
 
+use super::escape::escape_info;
 use super::state::Serializer;
 
 /// Emit a code block as backtick-fenced with its language tag. A block with
@@ -13,8 +14,9 @@ pub fn serialize_code_block<'a>(
     node: &'a AstNode<'a>,
     code: &NodeCodeBlock,
 ) {
-    let info = code.info.trim();
-    if info.is_empty() {
+    // The parser already trimmed the ASCII whitespace that ends an info
+    // string. Other whitespace is part of it.
+    if code.info.is_empty() {
         // Unfixable: a language can't be guessed. Report it and re-emit the
         // block's content unchanged.
         let sourcepos = node.data.borrow().sourcepos;
@@ -31,6 +33,7 @@ pub fn serialize_code_block<'a>(
         return;
     }
 
+    let info = escape_info(&code.info);
     // A backtick fence cannot hold a backtick in its info string.
     let fence_char = if info.contains('`') { '~' } else { '`' };
     let fence = fence_char
@@ -42,7 +45,9 @@ pub fn serialize_code_block<'a>(
     } else {
         ""
     };
-    s.push_line(&format!("{fence}{gap}{info}"));
+    // Literal: whitespace that ends the info string here is not ASCII, so
+    // it belongs to the language.
+    s.push_literal_line(&format!("{fence}{gap}{info}"));
     for line in code.literal.lines() {
         s.push_literal_line(line);
     }

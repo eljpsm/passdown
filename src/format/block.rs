@@ -133,7 +133,7 @@ pub fn needs_separator<'a>(prev: &'a AstNode<'a>, next: &'a AstNode<'a>, tight: 
 pub fn starts_indented(value: &NodeValue) -> bool {
     match value {
         NodeValue::CodeBlock(code) => {
-            !code.fenced || (code.info.trim().is_empty() && code.fence_offset > 0)
+            !code.fenced || (code.info.is_empty() && code.fence_offset > 0)
         }
         NodeValue::HtmlBlock(html) => html.literal.starts_with([' ', '\t']),
         _ => false,
