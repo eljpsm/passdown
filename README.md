@@ -97,7 +97,14 @@ its exact formatting
 
 ## The style
 
-The style is fixed. Every choice is made for you:
+The style is fixed. Every choice follows three rules:
+
+- One way to write each thing. Where Markdown allows several, passdown picks
+  one.
+- The rendered page does not change, apart from the punctuation rule below.
+- Definitions are written the way they render. Reference links become inline
+  links, footnote definitions go at the end, and definitions nothing uses are
+  removed.
 
 | Element               | Rule                                                                                                                                                                                                                                                                                              |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -112,6 +119,7 @@ The style is fixed. Every choice is made for you:
 | Thematic breaks       | `---`, or `***` inside a list item or as the first block, where `---` would misparse.                                                                                                                                                                                                             |
 | Hard breaks           | A trailing backslash.                                                                                                                                                                                                                                                                             |
 | Links                 | Reference links become inline links. Link definitions are removed.                                                                                                                                                                                                                                |
+| Footnotes             | Definitions at the end of the document, in order of first reference. Unused ones are removed.                                                                                                                                                                                                     |
 | Tables                | Padded pipes aligned by display width. Exempt from the 80-column limit.                                                                                                                                                                                                                           |
 | Math                  | `$...$` and `$$...$$` pass through untouched: no escaping, no punctuation conversion. A `$$` block alone in a paragraph keeps its fences on their own lines.                                                                                                                                      |
 | Front matter and HTML | Pass through unchanged. Front matter can be YAML (`---`) or TOML (`+++`).                                                                                                                                                                                                                         |
