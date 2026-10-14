@@ -10,3 +10,11 @@ also from inside a quote.
 [^b]: Unused.
 
 [^b]: Used.
+
+Removing one can leave a list item empty[^c]:
+
+- a
+  - [^c]: Unused.
+  - c
+
+[^c]: Used.

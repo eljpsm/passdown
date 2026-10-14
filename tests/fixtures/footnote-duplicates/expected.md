@@ -3,6 +3,15 @@ also from inside a quote.
 
 >
 
+Removing one can leave a list item empty[^c]:
+
+- a
+  <!-- -->
+  -
+  - c
+
 [^a]: Used.
 
 [^b]: Used.
+
+[^c]: Used.

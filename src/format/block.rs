@@ -34,7 +34,7 @@ pub fn separate<'a>(
     if !tight && !ends_with_blank_line(prev) && !definition_ends_in_open_html(prev) {
         s.push_blank();
     }
-    if needs_separator(prev, next) {
+    if needs_separator(prev, next, tight) {
         s.push_line("<!-- -->");
         if !tight {
             s.push_blank();
@@ -109,8 +109,18 @@ fn ends_in_open_html<'a>(node: &'a AstNode<'a>) -> bool {
 ///   last item.
 /// - Two indented code blocks. A link definition between them is dropped from
 ///   the output, and the blocks would join into one.
-pub fn needs_separator<'a>(prev: &'a AstNode<'a>, next: &'a AstNode<'a>) -> bool {
+/// - In a tight list item, a paragraph then a list whose first item is empty.
+///   An empty item cannot interrupt a paragraph: a bare `-` would underline
+///   it as a heading, and a bare `1.` would join it.
+pub fn needs_separator<'a>(prev: &'a AstNode<'a>, next: &'a AstNode<'a>, tight: bool) -> bool {
     match (&prev.data.borrow().value, &next.data.borrow().value) {
+        (NodeValue::Paragraph, NodeValue::List(_)) => {
+            tight
+                && next.first_child().is_some_and(|item| {
+                    matches!(item.data.borrow().value, NodeValue::Item(_))
+                        && item.first_child().is_none()
+                })
+        }
         (NodeValue::List(a), NodeValue::List(b)) => a.list_type == b.list_type,
         (NodeValue::List(_), next) => starts_indented(next),
         (NodeValue::CodeBlock(a), NodeValue::CodeBlock(b)) => !a.fenced && !b.fenced,
