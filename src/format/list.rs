@@ -19,18 +19,21 @@ pub fn serialize_list<'a>(s: &mut Serializer<'_>, node: &'a AstNode<'a>, list: &
 }
 
 /// Serialize one list item under its marker prefix. A task-list checkbox is
-/// injected as the first chunk of the leading paragraph so wrapping accounts
-/// for its width. Nested sibling lists of the same type get the usual
-/// `<!-- -->` separator so they don't merge on reparse.
+/// injected as the first chunk of a leading paragraph on the checkbox line so
+/// wrapping accounts for its width. Nested sibling lists of the same type get
+/// the usual `<!-- -->` separator so they don't merge on reparse.
 fn serialize_item<'a>(
     s: &mut Serializer<'_>,
     item: &'a AstNode<'a>,
     list: &NodeList,
     number: usize,
 ) {
-    let checkbox = match &item.data.borrow().value {
-        NodeValue::TaskItem(task) => Some(if task.symbol.is_some() { "[x]" } else { "[ ]" }),
-        _ => None,
+    let (checkbox, checkbox_line) = match &item.data.borrow().value {
+        NodeValue::TaskItem(task) => (
+            Some(if task.symbol.is_some() { "[x]" } else { "[ ]" }),
+            task.symbol_sourcepos.start.line,
+        ),
+        _ => (None, 0),
     };
 
     let (first, cont) = match list.list_type {
@@ -63,10 +66,17 @@ fn serialize_item<'a>(
         if let Some(prev) = prev {
             separate(s, prev, child, list.tight);
         }
-        let is_paragraph = matches!(child.data.borrow().value, NodeValue::Paragraph);
+        // In a loose list, a paragraph that starts below the `[ ]` line had
+        // a blank line before it. Joined to the checkbox, it would lose
+        // that blank.
+        let joins_checkbox = {
+            let data = child.data.borrow();
+            matches!(data.value, NodeValue::Paragraph)
+                && (list.tight || data.sourcepos.start.line == checkbox_line)
+        };
         if i == 0
             && let Some(checkbox) = checkbox
-            && is_paragraph
+            && joins_checkbox
         {
             let mut chunks = collect_chunks(child, &mut s.diags);
             chunks.insert(
@@ -85,8 +95,9 @@ fn serialize_item<'a>(
             {
                 s.push_line(checkbox);
                 // Indented code, a `2.` list or an empty item can't interrupt
-                // the `[ ]` line. A loose list allows a blank here, and a
-                // tight list never holds such a block.
+                // the `[ ]` line, and a paragraph would join it. A loose list
+                // allows a blank here. A tight list never holds such a block,
+                // and its paragraphs join the `[ ]` line.
                 if !list.tight {
                     s.push_blank();
                 }
