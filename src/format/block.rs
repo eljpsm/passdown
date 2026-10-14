@@ -31,7 +31,7 @@ pub fn separate<'a>(
     next: &'a AstNode<'a>,
     tight: bool,
 ) {
-    if !tight && !ends_with_blank_line(prev) {
+    if !tight && !ends_with_blank_line(prev) && !definition_ends_in_open_html(prev) {
         s.push_blank();
     }
     if needs_separator(prev, next) {
@@ -57,6 +57,43 @@ fn ends_with_blank_line<'a>(node: &'a AstNode<'a>) -> bool {
         | NodeValue::Item(_)
         | NodeValue::TaskItem(_)
         | NodeValue::FootnoteDefinition(_) => node.last_child().is_some_and(ends_with_blank_line),
+        _ => false,
+    }
+}
+
+/// True for a footnote definition that ends in an unclosed HTML block. A
+/// definition stays open across a blank line, so the block would take in a
+/// blank written after it. The next unindented line ends both.
+fn definition_ends_in_open_html<'a>(node: &'a AstNode<'a>) -> bool {
+    matches!(node.data.borrow().value, NodeValue::FootnoteDefinition(_)) && ends_in_open_html(node)
+}
+
+/// True when the block's last block is an HTML block whose end condition
+/// (`</pre>`, `-->` and so on) never came.
+fn ends_in_open_html<'a>(node: &'a AstNode<'a>) -> bool {
+    match &node.data.borrow().value {
+        NodeValue::HtmlBlock(html) => {
+            let last = html
+                .literal
+                .lines()
+                .last()
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            match html.block_type {
+                1 => !["</script>", "</pre>", "</style>", "</textarea>"]
+                    .iter()
+                    .any(|end| last.contains(end)),
+                2 => !last.contains("-->"),
+                3 => !last.contains("?>"),
+                4 => !last.contains('>'),
+                5 => !last.contains("]]>"),
+                _ => false,
+            }
+        }
+        NodeValue::List(_)
+        | NodeValue::Item(_)
+        | NodeValue::TaskItem(_)
+        | NodeValue::FootnoteDefinition(_) => node.last_child().is_some_and(ends_in_open_html),
         _ => false,
     }
 }
