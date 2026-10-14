@@ -41,9 +41,9 @@ An untyped fence that keeps its offset:
 
 <!-- -->
 
-```
-x
-```
+   ```
+   x
+   ```
 
 An indented HTML block:
 

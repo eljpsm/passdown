@@ -5,8 +5,8 @@ use crate::diagnostics::{DiagKind, Diagnostic};
 use super::state::Serializer;
 
 /// Emit a code block as backtick-fenced with its language tag. A block with
-/// no language is unfixable: report an Error diagnostic and reproduce the
-/// block exactly as written. Fences and indented blocks get distinct
+/// no language is unfixable: report an Error diagnostic and re-emit the
+/// block's content unchanged. Fences and indented blocks get distinct
 /// diagnostics, since only a fence can have a language added to it.
 pub fn serialize_code_block<'a>(
     s: &mut Serializer<'_>,
@@ -15,8 +15,8 @@ pub fn serialize_code_block<'a>(
 ) {
     let info = code.info.trim();
     if info.is_empty() {
-        // Unfixable: a language can't be guessed. Report it and emit the
-        // block exactly as written.
+        // Unfixable: a language can't be guessed. Report it and re-emit the
+        // block's content unchanged.
         let sourcepos = node.data.borrow().sourcepos;
         s.diags.push(Diagnostic {
             line: sourcepos.start.line,
@@ -27,37 +27,14 @@ pub fn serialize_code_block<'a>(
                 DiagKind::IndentedCodeBlock
             },
         });
-        // Indented blocks report an end position that can overshoot into
-        // trailing blank lines (end.column == 0); walk back to real content.
-        let mut end = sourcepos.end.line;
-        if sourcepos.end.column == 0 {
-            end = end.saturating_sub(1);
-        }
-        while end > sourcepos.start.line
-            && s.source_lines
-                .get(end - 1)
-                .is_some_and(|l| l.trim().is_empty())
-        {
-            end -= 1;
-        }
-        // An indented block's start column sits past its 4-space indent;
-        // re-add the indent after stripping the container context so the
-        // block stays indented code on reparse.
-        let reindent = if code.fenced { "" } else { "    " };
-        emit_verbatim(
-            s,
-            sourcepos.start.line,
-            end,
-            sourcepos.start.column,
-            reindent,
-        );
+        emit_untyped(s, code);
         return;
     }
 
     let fence = "`".repeat(fence_length(&code.literal));
     s.push_line(&format!("{fence}{info}"));
     for line in code.literal.lines() {
-        s.push_line(line);
+        s.push_literal_line(line);
     }
     s.push_line(&fence);
 }
@@ -81,19 +58,38 @@ fn fence_length(literal: &str) -> usize {
     (longest + 1).max(3)
 }
 
-/// Emit a block's source lines through the current prefix stack, stripping
-/// the columns the block's own container context occupied in the source
-/// (list indentation, `> ` markers) so prefixes aren't doubled.
-fn emit_verbatim(s: &mut Serializer<'_>, start: usize, end: usize, column: usize, reindent: &str) {
-    for idx in start..=end {
-        let Some(line) = s.source_lines.get(idx - 1) else {
-            continue;
-        };
-        let stripped: String = line.chars().skip(column - 1).collect();
-        if stripped.is_empty() {
+/// Re-emit an unfixable block from its parsed fields, not from source
+/// spans. The parser already removed each line's own container prefix and
+/// indent from the literal, so writing it back through the prefix stack
+/// reparses to the same block. Source spans give one start column for every
+/// line and an end that is unreliable for blocks that are not closed fences.
+fn emit_untyped(s: &mut Serializer<'_>, code: &NodeCodeBlock) {
+    if !code.fenced {
+        push_indented(s, "    ", &code.literal);
+        return;
+    }
+    // Content keeps the fence's indent: the parser strips up to that many
+    // spaces, and a fence-like line without it would close the block.
+    let indent = " ".repeat(code.fence_offset);
+    let marker = char::from(code.fence_char)
+        .to_string()
+        .repeat(code.fence_length);
+    let fence = format!("{indent}{marker}");
+    s.push_line(&fence);
+    push_indented(s, &indent, &code.literal);
+    // Always closed: an unclosed fence absorbs the blank lines up to the end
+    // of its container, and only a closing fence keeps them.
+    s.push_line(&fence);
+}
+
+/// Emit each literal line behind `indent`. A blank line stays blank: the
+/// indent alone would be trailing whitespace.
+fn push_indented(s: &mut Serializer<'_>, indent: &str, literal: &str) {
+    for line in literal.lines() {
+        if line.is_empty() {
             s.push_line("");
         } else {
-            s.push_line(&format!("{reindent}{stripped}"));
+            s.push_literal_line(&format!("{indent}{line}"));
         }
     }
 }
@@ -101,6 +97,55 @@ fn emit_verbatim(s: &mut Serializer<'_>, start: usize, end: usize, column: usize
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn untyped(first: &str, cont: &str, code: NodeCodeBlock) -> String {
+        let mut s = Serializer::new(vec![]);
+        s.push_prefix(first, cont);
+        emit_untyped(&mut s, &code);
+        s.pop_prefix();
+        s.finish()
+    }
+
+    fn indented(literal: &str) -> NodeCodeBlock {
+        NodeCodeBlock {
+            literal: literal.to_string(),
+            ..NodeCodeBlock::default()
+        }
+    }
+
+    fn fenced(fence: &str, offset: usize, literal: &str, closed: bool) -> NodeCodeBlock {
+        NodeCodeBlock {
+            fenced: true,
+            fence_char: fence.as_bytes()[0],
+            fence_length: fence.len(),
+            fence_offset: offset,
+            literal: literal.to_string(),
+            closed,
+            ..NodeCodeBlock::default()
+        }
+    }
+
+    #[test]
+    fn untyped_indented_keeps_every_line_under_prefix() {
+        let code = indented("a\n\nb\n");
+        assert_eq!(untyped("- ", "  ", code.clone()), "-     a\n\n      b\n");
+        assert_eq!(untyped("> ", "> ", code), ">     a\n>\n>     b\n");
+    }
+
+    #[test]
+    fn untyped_fence_keeps_char_length_and_offset() {
+        let code = fenced("~~~~", 2, "a\n ```\n", true);
+        assert_eq!(
+            untyped("> ", "> ", code),
+            ">   ~~~~\n>   a\n>    ```\n>   ~~~~\n"
+        );
+    }
+
+    #[test]
+    fn untyped_unclosed_fence_is_closed_and_keeps_blank_lines() {
+        let code = fenced("```", 0, "x\n\n", false);
+        assert_eq!(untyped("- ", "  ", code), "- ```\n  x\n\n  ```\n");
+    }
 
     #[test]
     fn fence_grows_past_content_backticks() {

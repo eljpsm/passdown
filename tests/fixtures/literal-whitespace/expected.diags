@@ -1,0 +1,2 @@
+input.md:9:1: error: code fence has no language
+input.md:13:5: error: indented code block (convert to a fenced block with a language)

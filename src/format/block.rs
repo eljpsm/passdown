@@ -183,18 +183,18 @@ pub fn serialize_block<'a>(s: &mut Serializer<'_>, node: &'a AstNode<'a>) {
             let literal = literal.clone();
             drop(data);
             for line in literal.trim_end_matches('\n').lines() {
-                s.push_line(line);
+                s.push_literal_line(line);
             }
         }
         NodeValue::HtmlBlock(html) => {
             let literal = html.literal.clone();
             drop(data);
             for line in literal.trim_end_matches('\n').lines() {
-                s.push_line(line);
+                s.push_literal_line(line);
             }
         }
-        // Not yet implemented: emit the block verbatim from source. Only
-        // reachable at the top level while milestones land.
+        // Unreachable with the extensions comrak_options enables. Keep the
+        // source of any block a comrak upgrade adds rather than drop it.
         _ => {
             let sourcepos = data.sourcepos;
             drop(data);

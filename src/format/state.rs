@@ -105,6 +105,19 @@ impl<'a> Serializer<'a> {
         self.out.push('\n');
     }
 
+    /// Emit one line of a literal block (code, HTML, front matter). Trailing
+    /// whitespace is content there, so only an empty line is trimmed.
+    pub fn push_literal_line(&mut self, content: &str) {
+        if content.is_empty() {
+            self.push_line("");
+            return;
+        }
+        let prefix = self.compose_prefix();
+        self.out.push_str(&prefix);
+        self.out.push_str(content);
+        self.out.push('\n');
+    }
+
     pub fn push_blank(&mut self) {
         self.push_line("");
     }
@@ -183,6 +196,16 @@ mod tests {
         s.push_blank();
         s.push_line("b");
         assert_eq!(s.finish(), "> a\n>\n> b\n");
+    }
+
+    #[test]
+    fn literal_line_keeps_trailing_whitespace() {
+        let mut s = Serializer::new(vec![]);
+        s.push_prefix("> ", "> ");
+        s.push_literal_line("a  ");
+        s.push_literal_line("");
+        s.push_literal_line("b");
+        assert_eq!(s.finish(), "> a  \n>\n> b\n");
     }
 
     #[test]
