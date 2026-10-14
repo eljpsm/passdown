@@ -31,7 +31,7 @@ pub fn separate<'a>(
     next: &'a AstNode<'a>,
     tight: bool,
 ) {
-    if !tight {
+    if !tight && !ends_with_blank_line(prev) {
         s.push_blank();
     }
     if needs_separator(prev, next) {
@@ -39,6 +39,25 @@ pub fn separate<'a>(
         if !tight {
             s.push_blank();
         }
+    }
+}
+
+/// True when the block's last emitted line is already blank. An unclosed
+/// HTML block (`<pre>` with no `</pre>`) runs to the end of its container
+/// and keeps the blank lines it took in. Another blank after it would be
+/// taken in too. A quote's blank lines are `>` lines, so it never counts.
+fn ends_with_blank_line<'a>(node: &'a AstNode<'a>) -> bool {
+    match &node.data.borrow().value {
+        NodeValue::HtmlBlock(html) => html
+            .literal
+            .lines()
+            .last()
+            .is_some_and(|line| line.trim_matches([' ', '\t']).is_empty()),
+        NodeValue::List(_)
+        | NodeValue::Item(_)
+        | NodeValue::TaskItem(_)
+        | NodeValue::FootnoteDefinition(_) => node.last_child().is_some_and(ends_with_blank_line),
+        _ => false,
     }
 }
 
@@ -120,6 +139,28 @@ fn thematic_break<'a>(node: &'a AstNode<'a>) -> &'static str {
             .parent()
             .is_some_and(|p| matches!(p.data.borrow().value, NodeValue::Document));
     if in_list || first { "***" } else { "---" }
+}
+
+/// The line as emitted at `column`. A tab's width depends on its column, so
+/// at a new column the indent can reach four columns and turn an HTML block
+/// into indented code. Only then is each tab replaced with one space. The
+/// source indent was at most three columns and each tab took at least one,
+/// so that keeps it an HTML block. Otherwise the tabs stay, since they can
+/// be content (inside a `<pre>` an earlier block opened).
+fn untab_indent(line: &str, column: usize) -> String {
+    let rest = line.trim_start_matches([' ', '\t']);
+    let indent = &line[..line.len() - rest.len()];
+    let end = indent.chars().fold(column, |col, c| {
+        if c == '\t' {
+            col + 4 - col % 4
+        } else {
+            col + 1
+        }
+    });
+    if end - column < 4 {
+        return line.to_string();
+    }
+    format!("{}{rest}", indent.replace('\t', " "))
 }
 
 /// Dispatch one block node to its serializer. Every arm clones or copies
@@ -225,8 +266,13 @@ pub fn serialize_block<'a>(s: &mut Serializer<'_>, node: &'a AstNode<'a>) {
         NodeValue::HtmlBlock(html) => {
             let literal = html.literal.clone();
             drop(data);
-            for line in literal.trim_end_matches('\n').lines() {
-                s.push_literal_line(line);
+            for (i, line) in literal.lines().enumerate() {
+                if i == 0 {
+                    let column = s.next_column();
+                    s.push_literal_line(&untab_indent(line, column));
+                } else {
+                    s.push_literal_line(line);
+                }
             }
         }
         // Unreachable with the extensions comrak_options enables. Keep the

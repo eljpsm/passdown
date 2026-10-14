@@ -84,6 +84,15 @@ impl<'a> Serializer<'a> {
         })
     }
 
+    /// The column where the next line's content starts. Counted in bytes, as
+    /// the parser counts columns for tab stops.
+    pub fn next_column(&self) -> usize {
+        self.prefix
+            .iter()
+            .map(|f| if f.used_first { &f.cont } else { &f.first }.len())
+            .sum()
+    }
+
     /// Emit one line of content under the current prefix. Trailing whitespace
     /// is always trimmed (this is what turns a blank quoted line into a bare
     /// `>`).

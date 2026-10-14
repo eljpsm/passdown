@@ -8,11 +8,13 @@ use super::wrap::wrap;
 /// Serialize a list: bullets become `- `, ordered items `N. `, with blank
 /// lines between items only when the list is loose.
 pub fn serialize_list<'a>(s: &mut Serializer<'_>, node: &'a AstNode<'a>, list: &NodeList) {
+    let mut prev: Option<&AstNode<'_>> = None;
     for (i, item) in node.children().enumerate() {
-        if i > 0 && !list.tight {
-            s.push_blank();
+        if let Some(prev) = prev {
+            separate(s, prev, item, list.tight);
         }
         serialize_item(s, item, list, list.start + i);
+        prev = Some(item);
     }
 }
 
