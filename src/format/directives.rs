@@ -40,6 +40,7 @@ fn directive_of<'a>(node: &'a AstNode<'a>) -> Option<Directive> {
 /// runs to the end of the file does not swallow them. One whose source is
 /// in a disabled region is already written there.
 pub fn serialize_document<'a>(s: &mut Serializer<'_>, root: &'a AstNode<'a>) {
+    remove_unused_definitions(root);
     let (children, definitions) = split_moved_definitions(root);
     let total_lines = s.source_lines.len();
     let mut verbatim: Vec<(usize, usize)> = Vec::new();
@@ -98,6 +99,26 @@ pub fn serialize_document<'a>(s: &mut Serializer<'_>, root: &'a AstNode<'a>) {
         }
     }
     write_definitions(s, prev, &definitions, &verbatim);
+}
+
+/// Remove the footnote definitions no reference resolves to. comrak drops
+/// unreferenced ones itself, but leaves an earlier definition of a repeated
+/// label where it is: references go to the last one. A definition inside a
+/// definition is content of the outer one, as the parser does not look
+/// there.
+fn remove_unused_definitions<'a>(root: &'a AstNode<'a>) {
+    let mut stack: Vec<_> = root.children().collect();
+    while let Some(node) = stack.pop() {
+        let unused = match &node.data.borrow().value {
+            NodeValue::FootnoteDefinition(def) => Some(def.total_references == 0),
+            _ => None,
+        };
+        match unused {
+            Some(true) => node.detach(),
+            Some(false) => {}
+            None => stack.extend(node.children()),
+        }
+    }
 }
 
 /// The top-level blocks, and apart from them the footnote definitions
