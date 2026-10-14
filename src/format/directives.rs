@@ -1,6 +1,6 @@
 use comrak::nodes::{AstNode, NodeValue};
 
-use super::block::{needs_separator, serialize_block};
+use super::block::{separate, serialize_block};
 use super::state::Serializer;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,16 +44,16 @@ pub fn serialize_document<'a>(s: &mut Serializer<'_>, root: &'a AstNode<'a>) {
         let child = children[i];
         match directive_of(child) {
             Some(Directive::DisableFile) => {
-                if prev.is_some() {
-                    s.push_blank();
+                if let Some(prev) = prev {
+                    separate(s, prev, child, false);
                 }
                 let start = child.data.borrow().sourcepos.start.line;
                 s.push_verbatim_span(start, total_lines);
                 return;
             }
             Some(Directive::Disable) => {
-                if prev.is_some() {
-                    s.push_blank();
+                if let Some(prev) = prev {
+                    separate(s, prev, child, false);
                 }
                 let start = child.data.borrow().sourcepos.start.line;
                 let matching = children[i + 1..]
@@ -75,11 +75,7 @@ pub fn serialize_document<'a>(s: &mut Serializer<'_>, root: &'a AstNode<'a>) {
             // Serialize it as a normal block.
             _ => {
                 if let Some(prev) = prev {
-                    s.push_blank();
-                    if needs_separator(prev, child) {
-                        s.push_line("<!-- -->");
-                        s.push_blank();
-                    }
+                    separate(s, prev, child, false);
                 }
                 serialize_block(s, child);
                 prev = Some(child);

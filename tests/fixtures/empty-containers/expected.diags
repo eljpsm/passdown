@@ -1,0 +1,2 @@
+input.md:20:5: error: indented code block (convert to a fenced block with a language)
+input.md:24:5: error: indented code block (convert to a fenced block with a language)

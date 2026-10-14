@@ -7,8 +7,7 @@ use super::state::Serializer;
 use super::table::serialize_table;
 use super::wrap::wrap;
 
-/// Serialize a run of sibling blocks with exactly one blank line between them,
-/// plus an `<!-- -->` separator where `needs_separator` says so.
+/// Serialize a run of sibling blocks, `separate`d from each other.
 pub fn serialize_blocks<'a>(
     s: &mut Serializer<'_>,
     children: impl Iterator<Item = &'a AstNode<'a>>,
@@ -16,14 +15,30 @@ pub fn serialize_blocks<'a>(
     let mut prev: Option<&AstNode<'_>> = None;
     for child in children {
         if let Some(prev) = prev {
-            s.push_blank();
-            if needs_separator(prev, child) {
-                s.push_line("<!-- -->");
-                s.push_blank();
-            }
+            separate(s, prev, child, false);
         }
         serialize_block(s, child);
         prev = Some(child);
+    }
+}
+
+/// Separate `next` from its sibling `prev`: one blank line, plus an
+/// `<!-- -->` separator where `needs_separator` says so. Inside a tight list
+/// item there are no blank lines, which would make the list loose on reparse.
+pub fn separate<'a>(
+    s: &mut Serializer<'_>,
+    prev: &'a AstNode<'a>,
+    next: &'a AstNode<'a>,
+    tight: bool,
+) {
+    if !tight {
+        s.push_blank();
+    }
+    if needs_separator(prev, next) {
+        s.push_line("<!-- -->");
+        if !tight {
+            s.push_blank();
+        }
     }
 }
 
@@ -143,6 +158,11 @@ pub fn serialize_block<'a>(s: &mut Serializer<'_>, node: &'a AstNode<'a>) {
         NodeValue::BlockQuote => {
             drop(data);
             s.push_prefix("> ", "> ");
+            // An empty quote still needs its `>`, or its neighbours would
+            // merge.
+            if node.first_child().is_none() {
+                s.push_line("");
+            }
             serialize_blocks(s, node.children());
             s.pop_prefix();
         }
@@ -184,10 +204,11 @@ pub fn serialize_block<'a>(s: &mut Serializer<'_>, node: &'a AstNode<'a>) {
             drop(data);
             s.push_prefix(&first, "    ");
             // The parser skips spaces after `[^n]:`, so an indented first
-            // block has to start on the next line.
+            // block has to start on the next line. An empty definition still
+            // needs its label.
             if node
                 .first_child()
-                .is_some_and(|child| starts_indented(&child.data.borrow().value))
+                .is_none_or(|child| starts_indented(&child.data.borrow().value))
             {
                 s.push_line("");
             }

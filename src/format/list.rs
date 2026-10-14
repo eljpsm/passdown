@@ -1,6 +1,6 @@
 use comrak::nodes::{AstNode, ListType, NodeList, NodeValue};
 
-use super::block::{needs_separator, serialize_block, starts_indented};
+use super::block::{separate, serialize_block, starts_indented};
 use super::inline::{Chunk, collect_chunks};
 use super::state::Serializer;
 use super::wrap::wrap;
@@ -58,19 +58,8 @@ fn serialize_item<'a>(
     let mut emitted_any = false;
     let mut prev: Option<&AstNode<'_>> = None;
     for (i, child) in item.children().enumerate() {
-        if i > 0 && !list.tight {
-            s.push_blank();
-        }
-        if let Some(prev) = prev
-            && needs_separator(prev, child)
-        {
-            // In a tight item the separator carries no blank lines. Blanks
-            // inside the item would make the list loose on reparse and break
-            // idempotency.
-            s.push_line("<!-- -->");
-            if !list.tight {
-                s.push_blank();
-            }
+        if let Some(prev) = prev {
+            separate(s, prev, child, list.tight);
         }
         let is_paragraph = matches!(child.data.borrow().value, NodeValue::Paragraph);
         if i == 0
