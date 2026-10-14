@@ -91,6 +91,44 @@ pub fn collect_chunks<'a>(node: &'a AstNode<'a>, diags: &mut Vec<Diagnostic>) ->
     builder.finish()
 }
 
+/// `collect_chunks` for a paragraph. Normalization and whitespace splitting
+/// can leave nothing but hard breaks, as with an `&nbsp;` spacer line, and
+/// such a paragraph is dropped or changed on reparse. Write its text as
+/// character references instead. It is kept as written, so its notes are
+/// dropped.
+pub fn paragraph_chunks<'a>(node: &'a AstNode<'a>, diags: &mut Vec<Diagnostic>) -> Vec<Chunk> {
+    let mut notes = Vec::new();
+    let chunks = collect_chunks(node, &mut notes);
+    if chunks.iter().any(|chunk| chunk.text != "\\") {
+        diags.append(&mut notes);
+        return chunks;
+    }
+    // Only text and line breaks can produce no visible chunk. Every character
+    // becomes a reference, whitespace and soft breaks too: a literal space
+    // would merge with the text around it on reparse and read differently.
+    let mut b = ChunkBuilder::new();
+    for descendant in node.descendants() {
+        match &descendant.data.borrow().value {
+            NodeValue::Text(literal) => {
+                b.piece(&literal.chars().map(reference).collect::<String>());
+            }
+            NodeValue::SoftBreak => b.piece(&reference('\n')),
+            NodeValue::LineBreak => b.hard_break(),
+            _ => {}
+        }
+    }
+    b.finish()
+}
+
+/// A character reference for `ch`.
+fn reference(ch: char) -> String {
+    if ch == '\u{a0}' {
+        "&nbsp;".to_string()
+    } else {
+        format!("&#x{:X};", u32::from(ch))
+    }
+}
+
 /// Inline content joined on single spaces, for contexts that never wrap
 /// (headings, table cells).
 pub fn collect_text<'a>(node: &'a AstNode<'a>, diags: &mut Vec<Diagnostic>) -> String {

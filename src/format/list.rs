@@ -1,7 +1,7 @@
 use comrak::nodes::{AstNode, ListType, NodeList, NodeValue};
 
 use super::block::{separate, serialize_block, starts_indented};
-use super::inline::{Chunk, collect_chunks};
+use super::inline::{Chunk, paragraph_chunks};
 use super::state::Serializer;
 use super::wrap::wrap;
 
@@ -78,7 +78,7 @@ fn serialize_item<'a>(
             && let Some(checkbox) = checkbox
             && joins_checkbox
         {
-            let mut chunks = collect_chunks(child, &mut s.diags);
+            let mut chunks = paragraph_chunks(child, &mut s.diags);
             chunks.insert(
                 0,
                 Chunk {

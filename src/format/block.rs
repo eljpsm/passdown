@@ -1,7 +1,7 @@
 use comrak::nodes::{AlertType, AstNode, NodeValue};
 
 use super::code::serialize_code_block;
-use super::inline::{collect_chunks, collect_text};
+use super::inline::{collect_text, paragraph_chunks};
 use super::list::serialize_list;
 use super::state::Serializer;
 use super::table::serialize_table;
@@ -176,7 +176,7 @@ pub fn serialize_block<'a>(s: &mut Serializer<'_>, node: &'a AstNode<'a>) {
                 serialize_display_math(s, &literal);
                 return;
             }
-            let chunks = collect_chunks(node, &mut s.diags);
+            let chunks = paragraph_chunks(node, &mut s.diags);
             for line in wrap(&chunks, s.width_budget()) {
                 s.push_line(&line);
             }
