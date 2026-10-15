@@ -4,6 +4,7 @@ use crate::discover::{DiscoveredFile, DiscoveryError};
 use crate::file_io::CommitError;
 use rayon::prelude::*;
 use std::cmp::Ordering;
+use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -199,11 +200,39 @@ impl RunReport {
         }
     }
 
+    /// Buffer both streams to avoid a write(2) per line. Flushing on every
+    /// stream switch keeps the order intact when both share a fd. Write
+    /// errors panic, as println! does.
     fn render(&self) {
-        self.for_each_message(|stream, message| match stream {
-            OutputStream::Stdout => println!("{message}"),
-            OutputStream::Stderr => eprintln!("{message}"),
+        let mut stdout = BufWriter::new(io::stdout().lock());
+        let mut stderr = BufWriter::new(io::stderr().lock());
+        let mut last = OutputStream::Stdout;
+        self.for_each_message(|stream, message| {
+            if stream != last {
+                write_to(last, &mut stdout, &mut stderr, |out| out.flush());
+                last = stream;
+            }
+            write_to(stream, &mut stdout, &mut stderr, |out| {
+                writeln!(out, "{message}")
+            });
         });
+        write_to(last, &mut stdout, &mut stderr, |out| out.flush());
+    }
+}
+
+/// Run `write` on the chosen stream. Panics with println!'s message on error.
+fn write_to<'a>(
+    stream: OutputStream,
+    stdout: &'a mut dyn Write,
+    stderr: &'a mut dyn Write,
+    write: impl FnOnce(&mut dyn Write) -> io::Result<()>,
+) {
+    let (out, name) = match stream {
+        OutputStream::Stdout => (stdout, "stdout"),
+        OutputStream::Stderr => (stderr, "stderr"),
+    };
+    if let Err(err) = write(out) {
+        panic!("failed printing to {name}: {err}");
     }
 }
 
