@@ -70,12 +70,21 @@ fn execute(cli: Cli) -> RunReport {
 
     let discovered = crate::discover::discover(&paths, &policy);
 
-    // Files are processed in parallel but reported in sorted order.
-    let outcomes: Vec<FileOutcome> = discovered
-        .files
-        .par_iter()
-        .map(|file| process_file(mode, file))
-        .collect();
+    // Files are processed in parallel but reported in sorted order. One file
+    // gains nothing from the thread pool and pays to start it.
+    let outcomes: Vec<FileOutcome> = if discovered.files.len() < 2 {
+        discovered
+            .files
+            .iter()
+            .map(|file| process_file(mode, file))
+            .collect()
+    } else {
+        discovered
+            .files
+            .par_iter()
+            .map(|file| process_file(mode, file))
+            .collect()
+    };
     RunReport::from_outcomes(discovered.errors, outcomes)
 }
 
