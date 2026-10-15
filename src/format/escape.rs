@@ -1,35 +1,30 @@
-/// Escape characters in prose text that could open inline constructs on
-/// reparse. Applied to every word from a Text node; never to code spans,
-/// HTML, or link destinations. Deliberately conservative: always escaping
-/// `` ` `` `*` `_` `[` `]` `\` keeps output stable regardless of context.
-pub fn escape_text(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let chars: Vec<char> = text.chars().collect();
-    for (i, &ch) in chars.iter().enumerate() {
-        let next = chars.get(i + 1).copied();
-        match ch {
-            '\\' | '`' | '*' | '_' | '[' | ']' => {
-                out.push('\\');
-                out.push(ch);
+/// Append `text` to `out`, escaping characters in prose that could open
+/// inline constructs on reparse. Applied to every word from a Text node;
+/// never to code spans, HTML, or link destinations. Deliberately
+/// conservative: always escaping `` ` `` `*` `_` `[` `]` `\` keeps output
+/// stable regardless of context. Every byte checked is ASCII, so scanning
+/// bytes matches scanning chars.
+pub fn escape_text_into(out: &mut String, text: &str) {
+    let bytes = text.as_bytes();
+    let mut start = 0;
+    for (i, &b) in bytes.iter().enumerate() {
+        let next = bytes.get(i + 1).copied();
+        let escape = match b {
+            b'\\' | b'`' | b'*' | b'_' | b'[' | b']' => true,
+            b'<' => {
+                next.is_some_and(|c| c.is_ascii_alphanumeric() || matches!(c, b'/' | b'!' | b'?'))
             }
-            '<' if next
-                .is_some_and(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '!' | '?')) =>
-            {
-                out.push('\\');
-                out.push(ch);
-            }
-            '!' if next == Some('[') => {
-                out.push('\\');
-                out.push(ch);
-            }
-            '&' if looks_like_entity(&chars[i + 1..]) => {
-                out.push('\\');
-                out.push(ch);
-            }
-            _ => out.push(ch),
+            b'!' => next == Some(b'['),
+            b'&' => looks_like_entity(&bytes[i + 1..]),
+            _ => false,
+        };
+        if escape {
+            out.push_str(&text[start..i]);
+            out.push('\\');
+            start = i;
         }
     }
-    out
+    out.push_str(&text[start..]);
 }
 
 /// Escape a code fence's info string. The parser decodes entities in it,
@@ -38,49 +33,37 @@ pub fn escape_text(text: &str) -> String {
 /// punctuation is doubled.
 pub fn escape_info(info: &str) -> String {
     let mut out = String::with_capacity(info.len());
-    let chars: Vec<char> = info.chars().collect();
-    for (i, &ch) in chars.iter().enumerate() {
-        match ch {
-            '\\' if chars.get(i + 1).is_some_and(|c| c.is_ascii_punctuation()) => {
-                out.push_str("\\\\");
-            }
-            '&' if looks_like_entity(&chars[i + 1..]) => out.push_str("&amp;"),
-            _ => out.push(ch),
-        }
+    let bytes = info.as_bytes();
+    let mut start = 0;
+    for (i, &b) in bytes.iter().enumerate() {
+        let rep = match b {
+            b'\\' if bytes.get(i + 1).is_some_and(|c| c.is_ascii_punctuation()) => "\\\\",
+            b'&' if looks_like_entity(&bytes[i + 1..]) => "&amp;",
+            _ => continue,
+        };
+        out.push_str(&info[start..i]);
+        out.push_str(rep);
+        start = i + 1;
     }
+    out.push_str(&info[start..]);
     out
 }
 
 /// True if `rest` begins like an HTML entity body (`amp;`, `#38;`, `#x26;`).
-fn looks_like_entity(rest: &[char]) -> bool {
-    let mut i = 0;
-    if rest.first() == Some(&'#') {
-        i += 1;
-        if matches!(rest.get(i), Some('x') | Some('X')) {
-            i += 1;
-            let start = i;
-            while rest.get(i).is_some_and(|c| c.is_ascii_hexdigit()) {
-                i += 1;
-            }
-            return i > start && rest.get(i) == Some(&';');
-        }
-        let start = i;
-        while rest.get(i).is_some_and(|c| c.is_ascii_digit()) {
-            i += 1;
-        }
-        return i > start && rest.get(i) == Some(&';');
-    }
-    let start = i;
-    while rest.get(i).is_some_and(|c| c.is_ascii_alphanumeric()) {
-        i += 1;
-    }
-    i > start && rest.get(i) == Some(&';')
+fn looks_like_entity(rest: &[u8]) -> bool {
+    let (digits, body): (fn(&u8) -> bool, &[u8]) = match rest {
+        [b'#', b'x' | b'X', body @ ..] => (u8::is_ascii_hexdigit, body),
+        [b'#', body @ ..] => (u8::is_ascii_digit, body),
+        body => (u8::is_ascii_alphanumeric, body),
+    };
+    let n = body.iter().take_while(|b| digits(b)).count();
+    n > 0 && body.get(n) == Some(&b';')
 }
 
 /// Escape a wrapped line whose first characters would start a block construct
 /// on reparse (list marker, heading, quote, setext underline, fence).
 /// Emphasis delimiters never trigger this: `*` and `_` in prose are already
-/// escaped by `escape_text`, and delimiter runs glue to their word.
+/// escaped by `escape_text_into`, and delimiter runs glue to their word.
 pub fn escape_line_start(line: String) -> String {
     let bytes = line.as_bytes();
     if bytes.is_empty() {
@@ -139,6 +122,12 @@ pub fn escape_line_start(line: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn escape_text(text: &str) -> String {
+        let mut out = String::new();
+        escape_text_into(&mut out, text);
+        out
+    }
 
     #[test]
     fn escapes_inline_specials() {
