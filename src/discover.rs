@@ -1,6 +1,8 @@
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
+use rayon::prelude::*;
+
 use crate::app::RunStatus;
 use crate::config::DiscoveryPolicy;
 use crate::file_io::{FileIdentity, canonicalize_and_inspect};
@@ -105,10 +107,23 @@ pub fn discover(paths: &[PathBuf], policy: &DiscoveryPolicy) -> Discovered {
         }
     }
 
+    // Inspection is a handful of syscalls per file, so run it in parallel.
+    // The dedup below stays serial so the first path in sorted order wins.
+    let candidates: Vec<PathBuf> = candidates.into_iter().collect();
+    let inspect = |display_path: PathBuf| {
+        let result = canonicalize_and_inspect(&display_path);
+        (display_path, result)
+    };
+    let inspected: Vec<_> = if candidates.len() > 1 {
+        candidates.into_par_iter().map(inspect).collect()
+    } else {
+        candidates.into_iter().map(inspect).collect()
+    };
+
     let mut identities = HashSet::new();
     let mut files = Vec::new();
-    for display_path in candidates {
-        match canonicalize_and_inspect(&display_path) {
+    for (display_path, result) in inspected {
+        match result {
             Ok((target_path, inspected)) => {
                 if identities.insert(inspected.identity) {
                     files.push(DiscoveredFile {
