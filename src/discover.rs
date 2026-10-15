@@ -1,9 +1,11 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
+
+use rayon::prelude::*;
 
 use crate::app::RunStatus;
 use crate::config::DiscoveryPolicy;
-use crate::file_io::{FileIdentity, canonicalize_and_inspect};
+use crate::file_io::{FileIdentity, canonicalize_and_inspect, inspect_walked};
 
 #[derive(Debug)]
 pub struct DiscoveredFile {
@@ -66,13 +68,14 @@ fn is_markdown(path: &Path) -> bool {
 /// Explicitly named files bypass ignore rules; directories are walked with
 /// the validated discovery policy.
 pub fn discover(paths: &[PathBuf], policy: &DiscoveryPolicy) -> Discovered {
-    let mut candidates: BTreeSet<PathBuf> = BTreeSet::new();
+    // Value is true for explicitly named paths, which may be symlinks.
+    let mut candidates: BTreeMap<PathBuf, bool> = BTreeMap::new();
     let mut directory_roots: BTreeSet<PathBuf> = BTreeSet::new();
     let mut errors = Vec::new();
 
     for path in paths {
         if path.is_file() {
-            candidates.insert(path.clone());
+            candidates.insert(path.clone(), true);
         } else if path.is_dir() {
             directory_roots.insert(path.clone());
         } else {
@@ -90,7 +93,7 @@ pub fn discover(paths: &[PathBuf], policy: &DiscoveryPolicy) -> Discovered {
                 Ok(entry) => {
                     let is_file = entry.file_type().is_some_and(|kind| kind.is_file());
                     if is_file && is_markdown(entry.path()) {
-                        candidates.insert(entry.into_path());
+                        candidates.entry(entry.into_path()).or_insert(false);
                     }
                 }
                 Err(err) => {
@@ -105,10 +108,27 @@ pub fn discover(paths: &[PathBuf], policy: &DiscoveryPolicy) -> Discovered {
         }
     }
 
+    // Inspection is a handful of syscalls per file, so run it in parallel.
+    // The dedup below stays serial so the first path in sorted order wins.
+    let candidates: Vec<(PathBuf, bool)> = candidates.into_iter().collect();
+    let inspect = |(display_path, explicit): (PathBuf, bool)| {
+        let result = if explicit {
+            canonicalize_and_inspect(&display_path)
+        } else {
+            inspect_walked(&display_path)
+        };
+        (display_path, result)
+    };
+    let inspected: Vec<_> = if candidates.len() > 1 {
+        candidates.into_par_iter().map(inspect).collect()
+    } else {
+        candidates.into_iter().map(inspect).collect()
+    };
+
     let mut identities = HashSet::new();
     let mut files = Vec::new();
-    for display_path in candidates {
-        match canonicalize_and_inspect(&display_path) {
+    for (display_path, result) in inspected {
+        match result {
             Ok((target_path, inspected)) => {
                 if identities.insert(inspected.identity) {
                     files.push(DiscoveredFile {

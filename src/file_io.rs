@@ -64,6 +64,35 @@ pub(crate) fn canonicalize_and_inspect(path: &Path) -> io::Result<(PathBuf, Insp
     Ok((target_path, inspect_file(file)?))
 }
 
+/// Capture the identity of a walked entry. The walker never follows links and
+/// keeps only regular files, so the path already names the real file and one
+/// lstat replaces realpath plus open and fstat.
+#[cfg(unix)]
+pub(crate) fn inspect_walked(path: &Path) -> io::Result<(PathBuf, InspectedFile)> {
+    use std::os::unix::fs::MetadataExt;
+
+    let metadata = std::fs::symlink_metadata(path)?;
+    if !metadata.is_file() {
+        return canonicalize_and_inspect(path);
+    }
+    Ok((
+        path.to_path_buf(),
+        InspectedFile {
+            identity: FileIdentity {
+                first: metadata.dev(),
+                second: metadata.ino(),
+            },
+            link_count: metadata.nlink(),
+            permissions: metadata.permissions(),
+        },
+    ))
+}
+
+#[cfg(windows)]
+pub(crate) fn inspect_walked(path: &Path) -> io::Result<(PathBuf, InspectedFile)> {
+    canonicalize_and_inspect(path)
+}
+
 /// Replace `path`'s contents atomically: write to a temporary file in the
 /// same directory, copy the target's permissions onto it, and rename it over
 /// the target. Fails without touching the target if the file's identity no

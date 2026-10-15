@@ -4,7 +4,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::diagnostics::{DiagKind, Diagnostic};
 use crate::normalize;
 
-use super::escape::escape_text;
+use super::escape::escape_text_into;
 
 /// An unbreakable unit of wrapped output. Breaks are only allowed between
 /// chunks; `break_after` forces one (hard line break).
@@ -37,14 +37,21 @@ impl ChunkBuilder {
     }
 
     fn piece(&mut self, text: &str) {
+        self.piece_with(|buf| buf.push_str(text));
+    }
+
+    /// Write a piece straight into the chunk it lands in.
+    fn piece_with(&mut self, write: impl FnOnce(&mut String)) {
         if self.glue
             && let Some(last) = self.chunks.last_mut()
             && !last.break_after
         {
-            last.text.push_str(text);
+            write(&mut last.text);
         } else {
+            let mut text = String::new();
+            write(&mut text);
             self.chunks.push(Chunk {
-                text: text.to_string(),
+                text,
                 break_after: false,
             });
         }
@@ -241,12 +248,11 @@ fn text(b: &mut ChunkBuilder, literal: &str) {
     if literal.chars().next().is_some_and(char::is_whitespace) {
         b.space();
     }
-    let words: Vec<&str> = literal.split_whitespace().collect();
-    for (i, word) in words.iter().enumerate() {
-        b.piece(&escape_text(word));
-        if i + 1 < words.len() {
+    for (i, word) in literal.split_whitespace().enumerate() {
+        if i > 0 {
             b.space();
         }
+        b.piece_with(|buf| escape_text_into(buf, word));
     }
     if literal.chars().last().is_some_and(char::is_whitespace) {
         b.space();
