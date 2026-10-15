@@ -16,7 +16,6 @@ mod diagnostics;
 mod discover;
 mod file_io;
 mod format;
-mod normalize;
 
 fn main() -> ExitCode {
     let cli = cli::Cli::parse();

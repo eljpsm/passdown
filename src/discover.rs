@@ -1,17 +1,17 @@
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
 use rayon::prelude::*;
 
-use crate::app::RunStatus;
 use crate::config::DiscoveryPolicy;
-use crate::file_io::{FileIdentity, canonicalize_and_inspect, inspect_walked};
+use crate::file_io::{FileIdentity, inspect};
 
 #[derive(Debug)]
 pub struct DiscoveredFile {
     /// The path as given or found, used for reporting and sort order.
     pub(crate) display_path: PathBuf,
-    /// The canonicalized path (symlinks resolved), used for reads and writes.
+    /// The path used for reads and writes. A symlink is resolved to its
+    /// target (on Windows, every path is canonicalized).
     pub(crate) target_path: PathBuf,
     /// Identity at discovery time; `atomic_replace` rechecks it at commit.
     pub(crate) identity: FileIdentity,
@@ -44,11 +44,6 @@ pub enum DiscoveryError {
 }
 
 impl DiscoveryError {
-    /// Discovery errors are operational failures.
-    pub const fn status(&self) -> RunStatus {
-        RunStatus::Failure
-    }
-
     /// Best available path for deterministic ordering and context.
     pub fn path(&self) -> &Path {
         match self {
@@ -68,14 +63,13 @@ fn is_markdown(path: &Path) -> bool {
 /// Explicitly named files bypass ignore rules; directories are walked with
 /// the validated discovery policy.
 pub fn discover(paths: &[PathBuf], policy: &DiscoveryPolicy) -> Discovered {
-    // Value is true for explicitly named paths, which may be symlinks.
-    let mut candidates: BTreeMap<PathBuf, bool> = BTreeMap::new();
+    let mut candidates: BTreeSet<PathBuf> = BTreeSet::new();
     let mut directory_roots: BTreeSet<PathBuf> = BTreeSet::new();
     let mut errors = Vec::new();
 
     for path in paths {
         if path.is_file() {
-            candidates.insert(path.clone(), true);
+            candidates.insert(path.clone());
         } else if path.is_dir() {
             directory_roots.insert(path.clone());
         } else {
@@ -93,7 +87,7 @@ pub fn discover(paths: &[PathBuf], policy: &DiscoveryPolicy) -> Discovered {
                 Ok(entry) => {
                     let is_file = entry.file_type().is_some_and(|kind| kind.is_file());
                     if is_file && is_markdown(entry.path()) {
-                        candidates.entry(entry.into_path()).or_insert(false);
+                        candidates.insert(entry.into_path());
                     }
                 }
                 Err(err) => {
@@ -110,19 +104,15 @@ pub fn discover(paths: &[PathBuf], policy: &DiscoveryPolicy) -> Discovered {
 
     // Inspection is a handful of syscalls per file, so run it in parallel.
     // The dedup below stays serial so the first path in sorted order wins.
-    let candidates: Vec<(PathBuf, bool)> = candidates.into_iter().collect();
-    let inspect = |(display_path, explicit): (PathBuf, bool)| {
-        let result = if explicit {
-            canonicalize_and_inspect(&display_path)
-        } else {
-            inspect_walked(&display_path)
-        };
+    let candidates: Vec<PathBuf> = candidates.into_iter().collect();
+    let inspect_one = |display_path: PathBuf| {
+        let result = inspect(&display_path);
         (display_path, result)
     };
     let inspected: Vec<_> = if candidates.len() > 1 {
-        candidates.into_par_iter().map(inspect).collect()
+        candidates.into_par_iter().map(inspect_one).collect()
     } else {
-        candidates.into_iter().map(inspect).collect()
+        candidates.into_iter().map(inspect_one).collect()
     };
 
     let mut identities = HashSet::new();

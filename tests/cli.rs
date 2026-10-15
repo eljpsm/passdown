@@ -340,6 +340,27 @@ fn fix_follows_and_preserves_a_file_symlink() {
 }
 
 #[cfg(unix)]
+#[test]
+fn fix_through_a_symlinked_directory() {
+    let tree = TempTree::new("symlink-dir");
+    tree.write("real/doc.md", "messy   text\n");
+    let link = tree.root.path().join("link");
+    std::os::unix::fs::symlink("real", &link).unwrap();
+
+    let fix = tree.run(&["fix", "link/doc.md"]);
+
+    assert_eq!(code(&fix), 0, "stderr was: {}", stderr(&fix));
+    assert!(stdout(&fix).contains("fixed: link/doc.md"));
+    assert_eq!(tree.read("real/doc.md"), "messy text\n");
+    assert!(
+        std::fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+}
+
+#[cfg(unix)]
 fn symlink_file(target: &Path, link: &Path) -> std::io::Result<()> {
     std::os::unix::fs::symlink(target, link)
 }

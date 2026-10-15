@@ -60,56 +60,54 @@ fn serialize_item<'a>(
         s.push_line("");
     }
 
-    let mut emitted_any = false;
-    let mut prev: Option<&AstNode<'_>> = None;
-    for (i, child) in item.children().enumerate() {
-        if let Some(prev) = prev {
-            separate(s, prev, child, list.tight);
-        }
-        // In a loose list, a paragraph that starts below the `[ ]` line had
-        // a blank line before it. Joined to the checkbox, it would lose
-        // that blank.
-        let joins_checkbox = {
-            let data = child.data.borrow();
-            matches!(data.value, NodeValue::Paragraph)
-                && (list.tight || data.sourcepos.start.line == checkbox_line)
-        };
-        if i == 0
-            && let Some(checkbox) = checkbox
-            && joins_checkbox
-        {
-            let mut chunks = collect_chunks(child, &mut s.diags);
-            chunks.insert(
-                0,
-                Chunk {
-                    text: checkbox.to_string(),
-                    break_after: false,
-                },
-            );
-            for line in wrap(&chunks, s.width_budget()) {
-                s.push_line(&line);
-            }
-        } else {
-            if i == 0
-                && let Some(checkbox) = checkbox
-            {
-                s.push_line(checkbox);
-                // Indented code, a `2.` list or an empty item can't interrupt
-                // the `[ ]` line, and a paragraph would join it. A loose list
-                // allows a blank here. A tight list never holds such a block,
-                // and its paragraphs join the `[ ]` line.
-                if !list.tight {
-                    s.push_blank();
+    let mut children = item.children();
+    match children.next() {
+        // An empty item still needs a line to carry its marker (a bare `-`).
+        None => s.push_line(checkbox.unwrap_or("")),
+        Some(first_child) => {
+            // In a loose list, a paragraph that starts below the `[ ]` line
+            // had a blank line before it. Joined to the checkbox, it would
+            // lose that blank.
+            let joins_checkbox = {
+                let data = first_child.data.borrow();
+                matches!(data.value, NodeValue::Paragraph)
+                    && (list.tight || data.sourcepos.start.line == checkbox_line)
+            };
+            match checkbox {
+                Some(checkbox) if joins_checkbox => {
+                    let mut chunks = collect_chunks(first_child, &mut s.diags);
+                    chunks.insert(
+                        0,
+                        Chunk {
+                            text: checkbox.to_string(),
+                            break_after: false,
+                        },
+                    );
+                    for line in wrap(&chunks, s.width_budget()) {
+                        s.push_line(&line);
+                    }
                 }
+                Some(checkbox) => {
+                    s.push_line(checkbox);
+                    // Indented code, a `2.` list or an empty item can't
+                    // interrupt the `[ ]` line, and a paragraph would join
+                    // it. A loose list allows a blank here. A tight list
+                    // never holds such a block, and its paragraphs join the
+                    // `[ ]` line.
+                    if !list.tight {
+                        s.push_blank();
+                    }
+                    serialize_block(s, first_child);
+                }
+                None => serialize_block(s, first_child),
             }
-            serialize_block(s, child);
+            let mut prev = first_child;
+            for child in children {
+                separate(s, prev, child, list.tight);
+                serialize_block(s, child);
+                prev = child;
+            }
         }
-        emitted_any = true;
-        prev = Some(child);
-    }
-    // An empty item still needs a line to carry its marker (a bare `-`).
-    if !emitted_any {
-        s.push_line(checkbox.unwrap_or(""));
     }
 
     s.pop_prefix();

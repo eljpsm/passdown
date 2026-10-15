@@ -123,8 +123,7 @@ impl ReportEntry {
 
     fn status(&self) -> RunStatus {
         match self {
-            Self::SetupFailure(_) => RunStatus::Failure,
-            Self::Discovery(error) => error.status(),
+            Self::SetupFailure(_) | Self::Discovery(_) => RunStatus::Failure,
             Self::File(outcome) => outcome.status,
         }
     }
