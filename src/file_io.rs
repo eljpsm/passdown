@@ -58,38 +58,26 @@ impl From<io::Error> for CommitError {
 /// Resolve symlinks to the real target and capture its identity. Fixes then
 /// rewrite the linked-to file, preserving the symlink. Commits use the
 /// identity to detect a swapped-out target.
-pub(crate) fn canonicalize_and_inspect(path: &Path) -> io::Result<(PathBuf, InspectedFile)> {
+fn canonicalize_and_inspect(path: &Path) -> io::Result<(PathBuf, InspectedFile)> {
     let target_path = std::fs::canonicalize(path)?;
     let file = File::open(&target_path)?;
     Ok((target_path, inspect_file(file)?))
 }
 
-/// Capture the identity of a walked entry. The walker never follows links and
-/// keeps only regular files, so the path already names the real file and one
-/// lstat replaces realpath plus open and fstat.
+/// Capture a discovered path's target and identity. A regular file already
+/// names the real file, so one lstat replaces realpath plus open and fstat.
+/// Anything else (a symlink) is resolved first.
 #[cfg(unix)]
-pub(crate) fn inspect_walked(path: &Path) -> io::Result<(PathBuf, InspectedFile)> {
-    use std::os::unix::fs::MetadataExt;
-
+pub(crate) fn inspect(path: &Path) -> io::Result<(PathBuf, InspectedFile)> {
     let metadata = std::fs::symlink_metadata(path)?;
     if !metadata.is_file() {
         return canonicalize_and_inspect(path);
     }
-    Ok((
-        path.to_path_buf(),
-        InspectedFile {
-            identity: FileIdentity {
-                first: metadata.dev(),
-                second: metadata.ino(),
-            },
-            link_count: metadata.nlink(),
-            permissions: metadata.permissions(),
-        },
-    ))
+    Ok((path.to_path_buf(), inspected_from(&metadata)))
 }
 
 #[cfg(windows)]
-pub(crate) fn inspect_walked(path: &Path) -> io::Result<(PathBuf, InspectedFile)> {
+pub(crate) fn inspect(path: &Path) -> io::Result<(PathBuf, InspectedFile)> {
     canonicalize_and_inspect(path)
 }
 
@@ -142,17 +130,23 @@ fn atomic_replace_with(
 
 #[cfg(unix)]
 fn inspect_file(file: File) -> io::Result<InspectedFile> {
+    Ok(inspected_from(&file.metadata()?))
+}
+
+/// Shared by discovery and commit so the identity they compare is built the
+/// same way.
+#[cfg(unix)]
+fn inspected_from(metadata: &std::fs::Metadata) -> InspectedFile {
     use std::os::unix::fs::MetadataExt;
 
-    let metadata = file.metadata()?;
-    Ok(InspectedFile {
+    InspectedFile {
         identity: FileIdentity {
             first: metadata.dev(),
             second: metadata.ino(),
         },
         link_count: metadata.nlink(),
         permissions: metadata.permissions(),
-    })
+    }
 }
 
 #[cfg(windows)]

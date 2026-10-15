@@ -112,7 +112,7 @@ fn ends_in_open_html<'a>(node: &'a AstNode<'a>) -> bool {
 /// - In a tight list item, a paragraph then a list whose first item is empty.
 ///   An empty item cannot interrupt a paragraph: a bare `-` would underline
 ///   it as a heading, and a bare `1.` would join it.
-pub fn needs_separator<'a>(prev: &'a AstNode<'a>, next: &'a AstNode<'a>, tight: bool) -> bool {
+fn needs_separator<'a>(prev: &'a AstNode<'a>, next: &'a AstNode<'a>, tight: bool) -> bool {
     match (&prev.data.borrow().value, &next.data.borrow().value) {
         (NodeValue::Paragraph, NodeValue::List(_)) => {
             tight

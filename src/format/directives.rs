@@ -50,22 +50,16 @@ pub fn serialize_document<'a>(s: &mut Serializer<'_>, root: &'a AstNode<'a>) {
     while i < children.len() {
         let child = children[i];
         match directive_of(child) {
-            Some(Directive::DisableFile) => {
+            Some(directive @ (Directive::Disable | Directive::DisableFile)) => {
                 let start = child.data.borrow().sourcepos.start.line;
-                verbatim.push((start, total_lines));
-                prev = write_definitions(s, prev, &definitions, &verbatim);
-                if let Some(prev) = prev {
-                    separate(s, prev, child, false);
-                }
-                s.push_verbatim_span(start, total_lines);
-                return;
-            }
-            Some(Directive::Disable) => {
-                let start = child.data.borrow().sourcepos.start.line;
-                let matching = children[i + 1..]
-                    .iter()
-                    .position(|n| directive_of(n) == Some(Directive::Enable))
-                    .map(|offset| i + 1 + offset);
+                let matching = if directive == Directive::Disable {
+                    children[i + 1..]
+                        .iter()
+                        .position(|n| directive_of(n) == Some(Directive::Enable))
+                        .map(|offset| i + 1 + offset)
+                } else {
+                    None
+                };
                 let Some(enable_idx) = matching else {
                     verbatim.push((start, total_lines));
                     prev = write_definitions(s, prev, &definitions, &verbatim);

@@ -2,9 +2,9 @@ use comrak::nodes::{AstNode, NodeValue};
 use unicode_width::UnicodeWidthStr;
 
 use crate::diagnostics::{DiagKind, Diagnostic};
-use crate::normalize;
 
 use super::escape::escape_text_into;
+use super::normalize;
 
 /// An unbreakable unit of wrapped output. Breaks are only allowed between
 /// chunks; `break_after` forces one (hard line break).
