@@ -96,10 +96,8 @@ pub fn serialize_document<'a>(s: &mut Serializer<'_>, root: &'a AstNode<'a>) {
 }
 
 /// Remove the footnote definitions no reference resolves to. comrak drops
-/// unreferenced ones itself, but leaves an earlier definition of a repeated
-/// label where it is: references go to the last one. A definition inside a
-/// definition is content of the outer one, as the parser does not look
-/// there.
+/// unreferenced ones itself, but leaves a later definition of a repeated
+/// label where it is: references go to the first one.
 fn remove_unused_definitions<'a>(root: &'a AstNode<'a>) {
     let mut stack: Vec<_> = root.children().collect();
     while let Some(node) = stack.pop() {
