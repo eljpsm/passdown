@@ -20,6 +20,7 @@ mod fixture_tests;
 
 use std::borrow::Cow;
 
+use comrak::nodes::NodeValue;
 use comrak::{Arena, Options, parse_document};
 
 use crate::diagnostics::Diagnostic;
@@ -68,6 +69,27 @@ pub(crate) fn format_document(input: &str) -> FormatResult {
         output: serializer.finish(),
         diagnostics,
     }
+}
+
+/// The folded labels of every footnote definition in `text`, used or not.
+pub(super) fn footnote_labels(text: &str) -> Vec<String> {
+    let arena = Arena::new();
+    let mut options = comrak_options(text);
+    options.parse.leave_footnote_definitions = true;
+    let root = parse_document(&arena, text, &options);
+    root.descendants()
+        .filter_map(|node| match &node.data.borrow().value {
+            NodeValue::FootnoteDefinition(def) => Some(fold_label(&def.name)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A footnote label as comrak compares it: whitespace runs collapsed, case
+/// folded.
+pub(super) fn fold_label(label: &str) -> String {
+    let collapsed = label.split_whitespace().collect::<Vec<_>>().join(" ");
+    caseless::default_case_fold_str(&collapsed)
 }
 
 /// Strip a leading BOM and normalize line endings to LF before parsing, so

@@ -143,22 +143,20 @@ mod tests {
     }
 
     fn indented(literal: &str) -> NodeCodeBlock {
-        NodeCodeBlock {
-            literal: literal.to_string(),
-            ..NodeCodeBlock::default()
-        }
+        let mut code = NodeCodeBlock::default();
+        code.literal = literal.to_string();
+        code
     }
 
     fn fenced(fence: &str, offset: usize, literal: &str, closed: bool) -> NodeCodeBlock {
-        NodeCodeBlock {
-            fenced: true,
-            fence_char: fence.as_bytes()[0],
-            fence_length: fence.len(),
-            fence_offset: offset,
-            literal: literal.to_string(),
-            closed,
-            ..NodeCodeBlock::default()
-        }
+        let mut code = NodeCodeBlock::default();
+        code.fenced = true;
+        code.fence_char = fence.as_bytes()[0];
+        code.fence_length = fence.len();
+        code.fence_offset = offset;
+        code.literal = literal.to_string();
+        code.closed = closed;
+        code
     }
 
     #[test]

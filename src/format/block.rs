@@ -1,4 +1,4 @@
-use comrak::nodes::{AlertType, AstNode, NodeValue};
+use comrak::nodes::{AstNode, NodeValue};
 
 use super::code::serialize_code_block;
 use super::inline::{collect_chunks, collect_text};
@@ -239,7 +239,7 @@ pub fn serialize_block<'a>(s: &mut Serializer<'_>, node: &'a AstNode<'a>) {
                 s.push_line(&format!("{marker} {text}"));
             }
         }
-        NodeValue::ThematicBreak => {
+        NodeValue::ThematicBreak(_) => {
             drop(data);
             s.push_line(thematic_break(node));
         }
@@ -255,18 +255,14 @@ pub fn serialize_block<'a>(s: &mut Serializer<'_>, node: &'a AstNode<'a>) {
             s.pop_prefix();
         }
         NodeValue::List(list) => {
-            let list = *list;
+            let list = list.clone();
             drop(data);
             serialize_list(s, node, &list);
         }
         NodeValue::Alert(alert) => {
-            let kind = match alert.alert_type {
-                AlertType::Note => "NOTE",
-                AlertType::Tip => "TIP",
-                AlertType::Important => "IMPORTANT",
-                AlertType::Warning => "WARNING",
-                AlertType::Caution => "CAUTION",
-            };
+            // AlertType is non_exhaustive. Its default title is the marker
+            // name, so new kinds round-trip without a match arm here.
+            let kind = alert.alert_type.default_title().to_uppercase();
             let header = match &alert.title {
                 Some(title) => format!("[!{kind}] {title}"),
                 None => format!("[!{kind}]"),

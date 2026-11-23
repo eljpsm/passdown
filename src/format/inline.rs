@@ -200,17 +200,17 @@ fn walk<'a>(b: &mut ChunkBuilder, node: &'a AstNode<'a>, diags: &mut Vec<Diagnos
         NodeValue::SoftBreak => b.space(),
         NodeValue::LineBreak => b.hard_break(),
         NodeValue::Code(code) => b.piece(&code_span(&code.literal)),
-        NodeValue::Emph => {
+        NodeValue::Emph(_) => {
             b.open("*");
             walk_inlines(b, &node.children().collect::<Vec<_>>(), diags);
             b.close("*");
         }
-        NodeValue::Strong => {
+        NodeValue::Strong(_) => {
             b.open("**");
             walk_inlines(b, &node.children().collect::<Vec<_>>(), diags);
             b.close("**");
         }
-        NodeValue::Strikethrough => {
+        NodeValue::Strikethrough(_) => {
             b.open("~~");
             walk_inlines(b, &node.children().collect::<Vec<_>>(), diags);
             b.close("~~");

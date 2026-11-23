@@ -95,6 +95,10 @@ its exact formatting
 <!-- passdown-enable -->
 ```
 
+Footnote definitions are written before a disabled region that runs to the end
+of the file or defines the same label, so the region does not hide or override
+them.
+
 ## The style
 
 The style is fixed. Every choice follows three rules:
@@ -119,7 +123,7 @@ The style is fixed. Every choice follows three rules:
 | Thematic breaks       | `---`, or `***` inside a list item or as the first block, where `---` would misparse.                                                                                                                                                                                                                                    |
 | Hard breaks           | A trailing backslash.                                                                                                                                                                                                                                                                                                    |
 | Links                 | Reference links become inline links. Link definitions are removed.                                                                                                                                                                                                                                                       |
-| Footnotes             | Definitions at the end of the document, in order of first reference. Unused ones are removed, including all but the last definition of a repeated label.                                                                                                                                                                 |
+| Footnotes             | Definitions at the end of the document, in order of first reference, counting references in the text before those in other definitions. Unused ones are removed, including all but the first definition of a repeated label.                                                                                             |
 | Tables                | Padded pipes aligned by display width. Exempt from the 80-column limit.                                                                                                                                                                                                                                                  |
 | Math                  | `$...$` and `$$...$$` pass through untouched: no escaping, no punctuation conversion. A `$$` block alone in a paragraph keeps its fences on their own lines.                                                                                                                                                             |
 | Front matter and HTML | Pass through unchanged. Front matter can be YAML (`---`) or TOML (`+++`).                                                                                                                                                                                                                                                |

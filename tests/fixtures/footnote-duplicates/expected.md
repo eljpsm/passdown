@@ -1,4 +1,4 @@
-Only the last definition of a label is used[^a][^b]. Earlier ones are removed,
+Only the first definition of a label is used[^a][^b]. Later ones are removed,
 also from inside a quote.
 
 >

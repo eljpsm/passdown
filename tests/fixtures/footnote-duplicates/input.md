@@ -1,20 +1,20 @@
-Only the last definition of a label is used[^a][^b]. Earlier ones are removed,
+Only the first definition of a label is used[^a][^b]. Later ones are removed,
 also from inside a quote.
+
+[^a]: Used.
 
 > [^a]: Unused.
 >     
 >     Still unused.
 
-[^a]: Used.
+[^b]: Used.
 
 [^b]: Unused.
 
-[^b]: Used.
-
 Removing one can leave a list item empty[^c]:
+
+[^c]: Used.
 
 - a
   - [^c]: Unused.
   - c
-
-[^c]: Used.

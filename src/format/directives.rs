@@ -2,6 +2,7 @@ use comrak::nodes::{AstNode, NodeValue};
 
 use super::block::{separate, serialize_block};
 use super::state::Serializer;
+use super::{fold_label, footnote_labels};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Directive {
@@ -38,10 +39,11 @@ fn directive_of<'a>(node: &'a AstNode<'a>) -> Option<Directive> {
 /// comrak moves footnote definitions to the end of the document. They are
 /// held back to the end of the formatted part, so a disabled region that
 /// runs to the end of the file does not swallow them. One whose source is
-/// in a disabled region is already written there.
+/// in a disabled region is already written there. One whose label a later
+/// disabled region also defines goes before that region instead, as the
+/// first definition of a label wins.
 pub fn serialize_document<'a>(s: &mut Serializer<'_>, root: &'a AstNode<'a>) {
-    remove_unused_definitions(root);
-    let (children, definitions) = split_moved_definitions(root);
+    let (children, mut definitions) = split_moved_definitions(root);
     let total_lines = s.source_lines.len();
     let mut verbatim: Vec<(usize, usize)> = Vec::new();
 
@@ -69,12 +71,15 @@ pub fn serialize_document<'a>(s: &mut Serializer<'_>, root: &'a AstNode<'a>) {
                     s.push_verbatim_span(start, total_lines);
                     return;
                 };
-                if let Some(prev) = prev {
-                    separate(s, prev, child, false);
-                }
                 let enable = children[enable_idx];
                 let end = enable.data.borrow().sourcepos.end.line;
                 verbatim.push((start, end));
+                let shadowed;
+                (shadowed, definitions) = split_shadowed(s, definitions, start, end);
+                prev = write_definitions(s, prev, &shadowed, &verbatim);
+                if let Some(prev) = prev {
+                    separate(s, prev, child, false);
+                }
                 s.push_verbatim_span(start, end);
                 prev = Some(enable);
                 i = enable_idx + 1;
@@ -95,24 +100,26 @@ pub fn serialize_document<'a>(s: &mut Serializer<'_>, root: &'a AstNode<'a>) {
     write_definitions(s, prev, &definitions, &verbatim);
 }
 
-/// Remove the footnote definitions no reference resolves to. comrak drops
-/// unreferenced ones itself, but leaves an earlier definition of a repeated
-/// label where it is: references go to the last one. A definition inside a
-/// definition is content of the outer one, as the parser does not look
-/// there.
-fn remove_unused_definitions<'a>(root: &'a AstNode<'a>) {
-    let mut stack: Vec<_> = root.children().collect();
-    while let Some(node) = stack.pop() {
-        let unused = match &node.data.borrow().value {
-            NodeValue::FootnoteDefinition(def) => Some(def.total_references == 0),
-            _ => None,
-        };
-        match unused {
-            Some(true) => node.detach(),
-            Some(false) => {}
-            None => stack.extend(node.children()),
-        }
+/// Split off the moved definitions whose label the source lines
+/// `start..=end` also define. comrak dropped those duplicates from the
+/// tree, so the region is parsed again to find them.
+fn split_shadowed<'a>(
+    s: &Serializer<'_>,
+    definitions: Vec<&'a AstNode<'a>>,
+    start: usize,
+    end: usize,
+) -> (Vec<&'a AstNode<'a>>, Vec<&'a AstNode<'a>>) {
+    if definitions.is_empty() {
+        return (Vec::new(), definitions);
     }
+    let region = s.source_lines.get(start - 1..end).unwrap_or_default();
+    let labels = footnote_labels(&region.join("\n"));
+    definitions.into_iter().partition(|def| {
+        let NodeValue::FootnoteDefinition(fd) = &def.data.borrow().value else {
+            return false;
+        };
+        labels.contains(&fold_label(&fd.name))
+    })
 }
 
 /// The top-level blocks, and apart from them the footnote definitions
