@@ -362,6 +362,7 @@ name = "passdown"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "caseless",
  "clap",
  "comrak",
  "ignore",

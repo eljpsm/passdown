@@ -12,6 +12,7 @@ repository = "https://github.com/eljpsm/passdown"
 
 [dependencies]
 anyhow = "1"
+caseless = "0.2"
 clap = { version = "4", features = ["derive"] }
 # Exact pin: the output is part of the contract and comrak releases change
 # rendering.
